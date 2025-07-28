@@ -1,0 +1,112 @@
+const { DataTypes, Op } = require('sequelize');
+const { sequelize } = require('../config/database');
+
+/**
+ * Product Model
+ * Ürün bilgilerini saklar
+ */
+const Product = sequelize.define('Product', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Ürünü oluşturan kullanıcının ID\'si'
+  },
+  external_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Dış sistem ürün ID\'si'
+  },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Ürün adı'
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Ürün açıklaması'
+  },
+  price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    comment: 'Ürün fiyatı'
+  },
+  stock: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Stok miktarı'
+  },
+  category_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Kategori ID'
+  },
+  source_marketplace: {
+    type: DataTypes.ENUM('trendyol', 'hepsiburada', 'n11', 'amazon', 'woocommerce', 'internal'),
+    allowNull: false,
+    defaultValue: 'internal',
+    comment: 'Ürünün kaynak pazaryeri'
+  },
+  barcode: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Ürün barkodu'
+  },
+  seller_sku: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Satıcı SKU kodu'
+  },
+  images: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Ürün görselleri (URL array)',
+    get() {
+      const rawValue = this.getDataValue('images');
+      return rawValue ? JSON.parse(rawValue) : [];
+    },
+    set(value) {
+      this.setDataValue('images', JSON.stringify(value || []));
+    }
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'inactive', 'draft'),
+    allowNull: false,
+    defaultValue: 'active',
+    comment: 'Ürün durumu'
+  }
+}, {
+  tableName: 'products',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  comment: 'Ürünler tablosu',
+  indexes: [
+    {
+      unique: true,
+      fields: ['user_id', 'barcode'],
+      where: {
+        barcode: {
+          [Op.ne]: null
+        }
+      }
+    },
+    {
+      unique: true,
+      fields: ['user_id', 'seller_sku'],
+      where: {
+        seller_sku: {
+          [Op.ne]: null
+        }
+      }
+    }
+  ]
+});
+
+module.exports = Product; 
