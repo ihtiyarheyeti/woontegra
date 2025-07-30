@@ -1,22 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const productManagementController = require('../controllers/productManagementController');
-const { validateApiKey, requireAdmin, requireUser } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, requireViewer } = require('../middleware/auth');
 
-// Apply API key validation to all routes
-router.use(validateApiKey);
+// Apply JWT authentication to all routes
+router.use(authenticateToken);
 
 // Import products from external API (Admin only)
 router.post('/import', requireAdmin, productManagementController.importProducts);
 
-// Get all products with pagination and filtering (User+)
-router.get('/', requireUser, productManagementController.getAllProducts);
+// Get all products with pagination and filtering (Viewer+)
+router.get('/', requireViewer, productManagementController.getAllProducts);
 
 // Create new product (Admin only)
 router.post('/', requireAdmin, productManagementController.createProduct);
 
-// Get product by ID (User+)
-router.get('/:id', requireUser, productManagementController.getProductById);
+// Get product by ID (Viewer+)
+router.get('/:id', requireViewer, productManagementController.getProductById);
 
 // Update product (Admin only)
 router.put('/:id', requireAdmin, productManagementController.updateProduct);
@@ -25,3 +25,4 @@ router.put('/:id', requireAdmin, productManagementController.updateProduct);
 router.delete('/:id', requireAdmin, productManagementController.deleteProduct);
 
 module.exports = router; 
+ 

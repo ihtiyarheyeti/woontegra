@@ -11,7 +11,12 @@ const Product = sequelize.define('Product', {
     primaryKey: true,
     autoIncrement: true
   },
-  user_id: {
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Kiracı ID'
+  },
+  customer_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
     comment: 'Ürünü oluşturan kullanıcının ID\'si'
@@ -47,6 +52,11 @@ const Product = sequelize.define('Product', {
     allowNull: true,
     comment: 'Kategori ID'
   },
+  brand_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Marka ID'
+  },
   source_marketplace: {
     type: DataTypes.ENUM('trendyol', 'hepsiburada', 'n11', 'amazon', 'woocommerce', 'internal'),
     allowNull: false,
@@ -80,6 +90,28 @@ const Product = sequelize.define('Product', {
     allowNull: false,
     defaultValue: 'active',
     comment: 'Ürün durumu'
+  },
+  seo_title: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'SEO başlığı'
+  },
+  seo_description: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'SEO açıklaması'
+  },
+  variants: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Ürün varyantları',
+    get() {
+      const rawValue = this.getDataValue('variants');
+      return rawValue ? JSON.parse(rawValue) : [];
+    },
+    set(value) {
+      this.setDataValue('variants', JSON.stringify(value || []));
+    }
   }
 }, {
   tableName: 'products',
@@ -90,7 +122,7 @@ const Product = sequelize.define('Product', {
   indexes: [
     {
       unique: true,
-      fields: ['user_id', 'barcode'],
+      fields: ['tenant_id', 'customer_id', 'barcode'],
       where: {
         barcode: {
           [Op.ne]: null
@@ -99,7 +131,7 @@ const Product = sequelize.define('Product', {
     },
     {
       unique: true,
-      fields: ['user_id', 'seller_sku'],
+      fields: ['tenant_id', 'customer_id', 'seller_sku'],
       where: {
         seller_sku: {
           [Op.ne]: null

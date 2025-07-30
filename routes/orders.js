@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
-const { validateApiKey } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-// Apply API key validation to all routes
-router.use(validateApiKey);
+router.use(authenticateToken);
 
 // Get all orders
 router.get('/', orderController.getAllOrders);

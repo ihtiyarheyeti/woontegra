@@ -1,460 +1,862 @@
-const { Product, SyncLog, Customer } = require('../models');
+const { Product, Category, Brand } = require('../models');
 const logger = require('../utils/logger');
+const multer = require('multer');
+const xlsx = require('xlsx');
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
+const { sendToMarketplaces } = require('../services/marketplaceSendService');
 
-/**
- * Get WooCommerce products
- * GET /api/products/woocommerce
- */
-const getWooCommerceProducts = async (req, res) => {
-  try {
-    const { customer_id } = req.query;
-
-    if (!customer_id) {
-      return res.status(400).json({
-        error: 'Missing customer_id',
-        message: 'customer_id is required'
-      });
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
 
-    // Mock WooCommerce products for demo
-    // In production, this would fetch from WooCommerce API
-    const wooProducts = [
-      {
-        id: 1,
-        name: 'iPhone 14 Pro',
-        sku: 'IPHONE14PRO',
-        price: 45000,
-        stock: 15,
-        category: 'Elektronik',
-        status: 'publish'
-      },
-      {
-        id: 2,
-        name: 'Samsung Galaxy S23',
-        sku: 'SAMSUNG-S23',
-        price: 38000,
-        stock: 8,
-        category: 'Elektronik',
-        status: 'publish'
-      },
-      {
-        id: 3,
-        name: 'Nike Air Max',
-        sku: 'NIKE-AIRMAX',
-        price: 1200,
-        stock: 25,
-        category: 'Spor & Outdoor',
-        status: 'publish'
-      },
-      {
-        id: 4,
-        name: 'MacBook Pro 14"',
-        sku: 'MACBOOK-PRO-14',
-        price: 85000,
-        stock: 3,
-        category: 'Elektronik',
-        status: 'publish'
-      },
-      {
-        id: 5,
-        name: 'Adidas Ultraboost',
-        sku: 'ADIDAS-ULTRABOOST',
-        price: 1800,
-        stock: 12,
-        category: 'Spor & Outdoor',
-        status: 'publish'
-      }
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'text/csv', // .csv
+      'application/xml', // .xml
+      'text/xml' // .xml
     ];
-
-    logger.info(`WooCommerce products fetched for customer ${customer_id}`);
-
-    res.json({
-      success: true,
-      data: {
-        products: wooProducts
-      }
-    });
-  } catch (error) {
-    logger.error('Get WooCommerce products error:', error);
-    res.status(500).json({
-      error: 'Failed to get WooCommerce products',
-      message: 'An error occurred while fetching products'
-    });
-  }
-};
-
-/**
- * Get Trendyol products
- * GET /api/products/trendyol
- */
-const getTrendyolProducts = async (req, res) => {
-  try {
-    const { customer_id } = req.query;
-
-    if (!customer_id) {
-      return res.status(400).json({
-        error: 'Missing customer_id',
-        message: 'customer_id is required'
-      });
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only Excel, CSV, and XML files are allowed.'), false);
     }
-
-    // Mock Trendyol products for demo
-    // In production, this would fetch from Trendyol API
-    const trendyolProducts = [
-      {
-        id: 101,
-        name: 'iPhone 14 Pro',
-        barcode: '1234567890123',
-        price: 45000,
-        stock: 15,
-        category: 'Elektronik & Bilgisayar',
-        status: 'active'
-      },
-      {
-        id: 102,
-        name: 'Samsung Galaxy S23',
-        barcode: '1234567890124',
-        price: 38000,
-        stock: 8,
-        category: 'Elektronik & Bilgisayar',
-        status: 'active'
-      },
-      {
-        id: 103,
-        name: 'Nike Air Max',
-        barcode: '1234567890125',
-        price: 1200,
-        stock: 25,
-        category: 'Spor & Outdoor',
-        status: 'active'
-      },
-      {
-        id: 104,
-        name: 'MacBook Pro 14"',
-        barcode: '1234567890126',
-        price: 85000,
-        stock: 3,
-        category: 'Elektronik & Bilgisayar',
-        status: 'active'
-      }
-    ];
-
-    logger.info(`Trendyol products fetched for customer ${customer_id}`);
-
-    res.json({
-      success: true,
-      data: {
-        products: trendyolProducts
-      }
-    });
-  } catch (error) {
-    logger.error('Get Trendyol products error:', error);
-    res.status(500).json({
-      error: 'Failed to get Trendyol products',
-      message: 'An error occurred while fetching products'
-    });
   }
-};
+});
 
 /**
- * Sync products between platforms
- * POST /api/products/sync
+ * Create new product with enhanced features
+ * POST /api/products
  */
-const syncProducts = async (req, res) => {
+const createProduct = async (req, res) => {
   try {
-    const { customer_id } = req.body;
+    const {
+      name,
+      price,
+      stock,
+      sku,
+      barcode,
+      status = 'active',
+      description,
+      category_id,
+      brand_id,
+      seo_title,
+      seo_description,
+      main_image,
+      gallery_images = [],
+      variants = []
+    } = req.body;
 
-    if (!customer_id) {
-      return res.status(400).json({
-        error: 'Missing customer_id',
-        message: 'customer_id is required'
-      });
-    }
-
-    // Mock sync process
-    // In production, this would compare products and sync missing ones
-    const syncResults = {
-      total_woo_products: 5,
-      total_trendyol_products: 4,
-      synced_products: 1,
-      failed_products: 0,
-      sync_logs: [
-        {
-          product_name: 'Adidas Ultraboost',
-          action: 'created',
-          platform: 'trendyol',
-          status: 'success'
-        }
-      ]
-    };
-
-    // Log the sync operation
-    await SyncLog.create({
-      customer_id,
-      operation_type: 'product_sync',
-      platform: 'both',
-      direction: 'outbound',
-      status: 'success',
-      data: syncResults
-    });
-
-    logger.info(`Product sync completed for customer ${customer_id}: ${syncResults.synced_products} products synced`);
-
-    res.json({
-      success: true,
-      message: 'Product synchronization completed successfully',
-      data: syncResults
-    });
-  } catch (error) {
-    logger.error('Product sync error:', error);
-    res.status(500).json({
-      error: 'Failed to sync products',
-      message: 'An error occurred during synchronization'
-    });
-  }
-};
-
-/**
- * Get stock and price information
- * GET /api/products/stocks-prices
- */
-const getStocksAndPrices = async (req, res) => {
-  try {
-    const { customer_id } = req.user;
-    const { filter } = req.query;
-
-    // Mock stock and price data
-    const stockPriceData = [
-      {
-        id: 1,
-        name: 'iPhone 14 Pro',
-        sku: 'IPHONE14PRO',
-        woo_price: 45000,
-        trendyol_price: 45000,
-        woo_stock: 15,
-        trendyol_stock: 15,
-        price_diff: 0,
-        stock_diff: 0,
-        needs_update: false,
-        category: 'Elektronik'
-      },
-      {
-        id: 2,
-        name: 'Samsung Galaxy S23',
-        sku: 'SAMSUNG-S23',
-        woo_price: 38000,
-        trendyol_price: 37500,
-        woo_stock: 8,
-        trendyol_stock: 8,
-        price_diff: 500,
-        stock_diff: 0,
-        needs_update: true,
-        category: 'Elektronik'
-      },
-      {
-        id: 3,
-        name: 'Nike Air Max',
-        sku: 'NIKE-AIRMAX',
-        woo_price: 1200,
-        trendyol_price: 1200,
-        woo_stock: 25,
-        trendyol_stock: 20,
-        price_diff: 0,
-        stock_diff: 5,
-        needs_update: true,
-        category: 'Spor & Outdoor'
-      },
-      {
-        id: 4,
-        name: 'MacBook Pro 14"',
-        sku: 'MACBOOK-PRO-14',
-        woo_price: 85000,
-        trendyol_price: 84000,
-        woo_stock: 3,
-        trendyol_stock: 3,
-        price_diff: 1000,
-        stock_diff: 0,
-        needs_update: true,
-        category: 'Elektronik'
-      },
-      {
-        id: 5,
-        name: 'Adidas Ultraboost',
-        sku: 'ADIDAS-ULTRABOOST',
-        woo_price: 1800,
-        trendyol_price: 1800,
-        woo_stock: 12,
-        trendyol_stock: 12,
-        price_diff: 0,
-        stock_diff: 0,
-        needs_update: false,
-        category: 'Spor & Outdoor'
-      }
-    ];
-
-    // Filter data based on query parameter
-    let filteredData = stockPriceData;
-    if (filter === 'needs_update') {
-      filteredData = stockPriceData.filter(product => product.needs_update);
-    } else if (filter === 'low_stock') {
-      filteredData = stockPriceData.filter(product => 
-        product.woo_stock < 10 || product.trendyol_stock < 10
-      );
-    }
-
-    logger.info(`Stock and price data fetched for customer ${customer_id}`);
-
-    res.json({
-      success: true,
-      data: filteredData,
-      total: filteredData.length,
-      needs_update: stockPriceData.filter(p => p.needs_update).length,
-      low_stock: stockPriceData.filter(p => p.woo_stock < 10 || p.trendyol_stock < 10).length
-    });
-  } catch (error) {
-    logger.error('Error fetching stocks and prices:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Stok ve fiyat bilgileri getirilirken hata oluştu'
-    });
-  }
-};
-
-/**
- * Update stock and price
- * POST /api/products/update-stock-price
- */
-const updateStockPrice = async (req, res) => {
-  try {
-    const { customer_id } = req.user;
-    const { updates } = req.body;
-
-    if (!updates || !Array.isArray(updates) || updates.length === 0) {
+    // Validate required fields
+    if (!name || !price) {
       return res.status(400).json({
         success: false,
-        message: 'Güncellenecek ürün listesi gerekli'
+        message: 'Ürün adı ve fiyat zorunludur'
       });
     }
 
-    const results = [];
+    if (price <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fiyat 0\'dan büyük olmalıdır'
+      });
+    }
+
+    if (stock < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Stok adedi negatif olamaz'
+      });
+    }
+
+    // Check if SKU already exists
+    if (sku) {
+      const existingSku = await Product.findOne({
+        where: { 
+          seller_sku: sku,
+          tenant_id: req.user.tenant_id,
+          customer_id: req.user.id
+        }
+      });
+
+      if (existingSku) {
+        return res.status(409).json({
+          success: false,
+          message: 'Bu SKU kodu zaten kullanılıyor'
+        });
+      }
+    }
+
+    // Check if barcode already exists
+    if (barcode) {
+      const existingBarcode = await Product.findOne({
+        where: { 
+          barcode: barcode,
+          tenant_id: req.user.tenant_id,
+          customer_id: req.user.id
+        }
+      });
+
+      if (existingBarcode) {
+        return res.status(409).json({
+          success: false,
+          message: 'Bu barkod zaten kullanılıyor'
+        });
+      }
+    }
+
+    // Create product
+    const product = await Product.create({
+      tenant_id: req.user.tenant_id,
+      customer_id: req.user.id,
+      name,
+      description,
+      price: parseFloat(price),
+      stock: parseInt(stock) || 0,
+      category_id: category_id || null,
+      barcode,
+      seller_sku: sku,
+      images: [main_image, ...gallery_images].filter(Boolean),
+      status,
+      source_marketplace: 'internal',
+      // Additional fields for SEO
+      seo_title: seo_title || name,
+      seo_description: seo_description || description,
+      brand_id: brand_id || null,
+      variants: variants.length > 0 ? JSON.stringify(variants) : null
+    });
+
+    logger.info(`Product created: ${product.name} (ID: ${product.id}) by user ${req.user.id}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Ürün başarıyla oluşturuldu',
+      data: product
+    });
+
+  } catch (error) {
+    logger.error('Error creating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ürün oluşturulurken hata oluştu',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Bulk upload products from file
+ * POST /api/products/bulk-upload
+ */
+const bulkUploadProducts = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dosya yüklenmedi'
+      });
+    }
+
+    const filePath = req.file.path;
+    const fileExtension = path.extname(req.file.originalname).toLowerCase();
+    const isConfirm = req.body.confirm === 'true';
+
+    let products = [];
+
+    // Parse file based on extension
+    if (fileExtension === '.xlsx' || fileExtension === '.xls') {
+      const workbook = xlsx.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      products = xlsx.utils.sheet_to_json(worksheet);
+    } else if (fileExtension === '.csv') {
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const lines = fileContent.split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim()) {
+          const values = lines[i].split(',').map(v => v.trim());
+          const product = {};
+          headers.forEach((header, index) => {
+            product[header] = values[index] || '';
+          });
+          products.push(product);
+        }
+      }
+    } else if (fileExtension === '.xml') {
+      // Basic XML parsing (you might want to use a proper XML parser)
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      // This is a simplified XML parser - in production, use a proper XML library
+      const productMatches = fileContent.match(/<product>(.*?)<\/product>/gs);
+      if (productMatches) {
+        products = productMatches.map(match => {
+          const nameMatch = match.match(/<name>(.*?)<\/name>/);
+          const priceMatch = match.match(/<price>(.*?)<\/price>/);
+          const stockMatch = match.match(/<stock>(.*?)<\/stock>/);
+          const descriptionMatch = match.match(/<description>(.*?)<\/description>/);
+          
+          return {
+            name: nameMatch ? nameMatch[1] : '',
+            price: priceMatch ? parseFloat(priceMatch[1]) : 0,
+            stock: stockMatch ? parseInt(stockMatch[1]) : 0,
+            description: descriptionMatch ? descriptionMatch[1] : ''
+          };
+        });
+      }
+    }
+
+    // Validate and clean data
+    const validatedProducts = [];
     const errors = [];
 
-    for (const update of updates) {
-      try {
-        const { product_id, platform, price, stock } = update;
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i];
+      const rowNumber = i + 2; // +2 because of header row and 0-based index
 
-        if (!product_id || !platform) {
-          errors.push({
-            product_id,
-            error: 'product_id ve platform gerekli'
+      // Basic validation
+      if (!product.name || !product.price) {
+        errors.push({
+          row: rowNumber,
+          error: 'Ürün adı ve fiyat zorunludur'
+        });
+        continue;
+      }
+
+      if (isNaN(product.price) || product.price <= 0) {
+        errors.push({
+          row: rowNumber,
+          error: 'Geçersiz fiyat'
+        });
+        continue;
+      }
+
+      if (product.stock && (isNaN(product.stock) || product.stock < 0)) {
+        errors.push({
+          row: rowNumber,
+          error: 'Geçersiz stok adedi'
+        });
+        continue;
+      }
+
+      // Clean and format data
+      validatedProducts.push({
+        name: product.name.toString().trim(),
+        description: product.description ? product.description.toString().trim() : '',
+        price: parseFloat(product.price),
+        stock: product.stock ? parseInt(product.stock) : 0,
+        sku: product.sku ? product.sku.toString().trim() : '',
+        barcode: product.barcode ? product.barcode.toString().trim() : '',
+        category: product.category ? product.category.toString().trim() : '',
+        brand: product.brand ? product.brand.toString().trim() : '',
+        status: product.status === 'inactive' ? 'inactive' : 'active',
+        seo_title: product.seo_title ? product.seo_title.toString().trim() : '',
+        seo_description: product.seo_description ? product.seo_description.toString().trim() : ''
+      });
+    }
+
+    // If just preview, return the data
+    if (!isConfirm) {
+      // Clean up uploaded file
+      fs.unlinkSync(filePath);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Dosya başarıyla işlendi',
+        data: {
+          preview: validatedProducts.slice(0, 10), // Show first 10 for preview
+          total: validatedProducts.length,
+          errors: errors.slice(0, 10) // Show first 10 errors
+        }
+      });
+    }
+
+    // If confirming, proceed with database insertion
+    const results = {
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    for (const productData of validatedProducts) {
+      try {
+        // Check for existing product by SKU or barcode
+        let existingProduct = null;
+        
+        if (productData.sku) {
+          existingProduct = await Product.findOne({
+            where: {
+              seller_sku: productData.sku,
+              tenant_id: req.user.tenant_id,
+              customer_id: req.user.id
+            }
           });
-          continue;
         }
 
-        // Mock update process
-        const updateResult = {
-          product_id,
-          platform,
-          old_price: price ? price - Math.floor(Math.random() * 1000) : null,
-          new_price: price,
-          old_stock: stock ? stock - Math.floor(Math.random() * 5) : null,
-          new_stock: stock,
-          status: 'success',
-          updated_at: new Date()
-        };
+        if (!existingProduct && productData.barcode) {
+          existingProduct = await Product.findOne({
+            where: {
+              barcode: productData.barcode,
+              tenant_id: req.user.tenant_id,
+              customer_id: req.user.id
+            }
+          });
+        }
 
-        // Log the update
-        await SyncLog.create({
-          customer_id,
-          operation_type: 'stock_update',
-          platform,
-          direction: 'outbound',
-          status: 'success',
-          data: updateResult
-        });
-
-        results.push(updateResult);
-        logger.info(`Stock/price updated for product ${product_id} on ${platform}`);
+        if (existingProduct) {
+          // Update existing product
+          await existingProduct.update({
+            name: productData.name,
+            description: productData.description,
+            price: productData.price,
+            stock: productData.stock,
+            barcode: productData.barcode,
+            seller_sku: productData.sku,
+            status: productData.status,
+            seo_title: productData.seo_title,
+            seo_description: productData.seo_description
+          });
+          results.updated++;
+        } else {
+          // Create new product
+          await Product.create({
+            tenant_id: req.user.tenant_id,
+            customer_id: req.user.id,
+            name: productData.name,
+            description: productData.description,
+            price: productData.price,
+            stock: productData.stock,
+            barcode: productData.barcode,
+            seller_sku: productData.sku,
+            status: productData.status,
+            source_marketplace: 'internal',
+            seo_title: productData.seo_title,
+            seo_description: productData.seo_description
+          });
+          results.imported++;
+        }
       } catch (error) {
-        errors.push({
-          product_id: update.product_id,
+        results.errors.push({
+          product: productData.name,
           error: error.message
         });
       }
     }
 
-    res.json({
+    // Clean up uploaded file
+    fs.unlinkSync(filePath);
+
+    logger.info(`Bulk upload completed: ${results.imported} imported, ${results.updated} updated, ${results.errors.length} errors`);
+
+    res.status(200).json({
       success: true,
-      message: `${results.length} ürün başarıyla güncellendi`,
+      message: 'Toplu yükleme tamamlandı',
       data: {
-        updated: results,
-        errors: errors,
-        total_processed: updates.length,
-        success_count: results.length,
-        error_count: errors.length
+        imported: results.imported,
+        updated: results.updated,
+        skipped: results.skipped,
+        errors: results.errors
       }
     });
+
   } catch (error) {
-    logger.error('Error updating stock and price:', error);
+    logger.error('Error in bulk upload:', error);
+    
+    // Clean up file if it exists
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
     res.status(500).json({
       success: false,
-      message: 'Stok ve fiyat güncellenirken hata oluştu'
+      message: 'Toplu yükleme sırasında hata oluştu',
+      error: error.message
     });
   }
 };
 
 /**
- * Get sync logs
- * GET /api/products/sync-logs
+ * Get all products with enhanced filtering
+ * GET /api/products
  */
-const getSyncLogs = async (req, res) => {
+const getAllProducts = async (req, res) => {
   try {
-    const { customer_id, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const { 
+      page = 1, 
+      limit = 10, 
+      status, 
+      search, 
+      category_id, 
+      brand_id,
+      min_price,
+      max_price,
+      sort_by = 'created_at',
+      sort_order = 'DESC'
+    } = req.query;
 
-    if (!customer_id) {
-      return res.status(400).json({
-        error: 'Missing customer_id',
-        message: 'customer_id is required'
-      });
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build where clause
+    const whereClause = {
+      tenant_id: req.user.tenant_id,
+      customer_id: req.user.id
+    };
+
+    if (status) {
+      whereClause.status = status;
     }
 
-    const { count, rows } = await SyncLog.findAndCountAll({
-      where: { 
-        customer_id,
-        operation_type: ['product_sync', 'stock_update', 'price_update']
-      },
+    if (category_id) {
+      whereClause.category_id = category_id;
+    }
+
+    if (brand_id) {
+      whereClause.brand_id = brand_id;
+    }
+
+    if (min_price || max_price) {
+      whereClause.price = {};
+      if (min_price) whereClause.price[require('sequelize').Op.gte] = parseFloat(min_price);
+      if (max_price) whereClause.price[require('sequelize').Op.lte] = parseFloat(max_price);
+    }
+
+    if (search) {
+      whereClause[require('sequelize').Op.or] = [
+        { name: { [require('sequelize').Op.like]: `%${search}%` } },
+        { description: { [require('sequelize').Op.like]: `%${search}%` } },
+        { seller_sku: { [require('sequelize').Op.like]: `%${search}%` } },
+        { barcode: { [require('sequelize').Op.like]: `%${search}%` } }
+      ];
+    }
+
+    // Validate sort parameters
+    const allowedSortFields = ['name', 'price', 'stock', 'created_at', 'updated_at'];
+    const allowedSortOrders = ['ASC', 'DESC'];
+    
+    const finalSortBy = allowedSortFields.includes(sort_by) ? sort_by : 'created_at';
+    const finalSortOrder = allowedSortOrders.includes(sort_order.toUpperCase()) ? sort_order.toUpperCase() : 'DESC';
+
+    const { count, rows: products } = await Product.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        },
+        {
+          model: Brand,
+          as: 'brand',
+          attributes: ['id', 'name']
+        }
+      ],
       limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [['created_at', 'DESC']]
+      offset: offset,
+      order: [[finalSortBy, finalSortOrder]]
     });
 
-    res.json({
+    res.status(200).json({
       success: true,
       data: {
-        logs: rows,
+        products,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
           total: count,
-          pages: Math.ceil(count / limit)
+          pages: Math.ceil(count / parseInt(limit))
         }
       }
     });
+
   } catch (error) {
-    logger.error('Get sync logs error:', error);
+    logger.error('Error fetching products:', error);
     res.status(500).json({
-      error: 'Failed to get sync logs',
-      message: 'An error occurred while fetching logs'
+      success: false,
+      message: 'Ürünler getirilemedi',
+      error: error.message
     });
   }
 };
 
+/**
+ * Get product by ID
+ * GET /api/products/:id
+ */
+const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findOne({
+      where: {
+        id: id,
+        tenant_id: req.user.tenant_id,
+        customer_id: req.user.id
+      },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'description']
+        },
+        {
+          model: Brand,
+          as: 'brand',
+          attributes: ['id', 'name']
+        }
+      ]
+    });
+    
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ürün bulunamadı'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: product
+    });
+
+  } catch (error) {
+    logger.error('Error fetching product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ürün getirilemedi',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update product
+ * PUT /api/products/:id
+ */
+const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      price,
+      stock,
+      sku,
+      barcode,
+      status,
+      description,
+      category_id,
+      brand_id,
+      seo_title,
+      seo_description,
+      main_image,
+      gallery_images,
+      variants
+    } = req.body;
+
+    const product = await Product.findOne({
+      where: {
+        id: id,
+        tenant_id: req.user.tenant_id,
+        customer_id: req.user.id
+      }
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ürün bulunamadı'
+      });
+    }
+
+    // Check if SKU is being changed and if it already exists
+    if (sku && sku !== product.seller_sku) {
+      const existingSku = await Product.findOne({
+        where: {
+          seller_sku: sku,
+          tenant_id: req.user.tenant_id,
+          customer_id: req.user.id,
+          id: { [require('sequelize').Op.ne]: id }
+        }
+      });
+
+      if (existingSku) {
+        return res.status(409).json({
+          success: false,
+          message: 'Bu SKU kodu zaten kullanılıyor'
+        });
+      }
+    }
+
+    // Check if barcode is being changed and if it already exists
+    if (barcode && barcode !== product.barcode) {
+      const existingBarcode = await Product.findOne({
+        where: {
+          barcode: barcode,
+          tenant_id: req.user.tenant_id,
+          customer_id: req.user.id,
+          id: { [require('sequelize').Op.ne]: id }
+        }
+      });
+
+      if (existingBarcode) {
+        return res.status(409).json({
+          success: false,
+          message: 'Bu barkod zaten kullanılıyor'
+        });
+      }
+    }
+
+    // Prepare update data
+    const updateData = {};
+    
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (price !== undefined) updateData.price = parseFloat(price);
+    if (stock !== undefined) updateData.stock = parseInt(stock);
+    if (sku !== undefined) updateData.seller_sku = sku;
+    if (barcode !== undefined) updateData.barcode = barcode;
+    if (status !== undefined) updateData.status = status;
+    if (category_id !== undefined) updateData.category_id = category_id;
+    if (brand_id !== undefined) updateData.brand_id = brand_id;
+    if (seo_title !== undefined) updateData.seo_title = seo_title;
+    if (seo_description !== undefined) updateData.seo_description = seo_description;
+    if (variants !== undefined) updateData.variants = JSON.stringify(variants);
+
+    // Handle images
+    if (main_image || gallery_images) {
+      const currentImages = product.images || [];
+      let newImages = currentImages;
+
+      if (main_image) {
+        // Replace first image with main image
+        newImages[0] = main_image;
+      }
+
+      if (gallery_images) {
+        // Add gallery images after main image
+        newImages = [newImages[0], ...gallery_images].filter(Boolean);
+      }
+
+      updateData.images = newImages;
+    }
+
+    await product.update(updateData);
+
+    logger.info(`Product updated: ${product.name} (ID: ${product.id}) by user ${req.user.id}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Ürün başarıyla güncellendi',
+      data: product
+    });
+
+  } catch (error) {
+    logger.error('Error updating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ürün güncellenirken hata oluştu',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Delete product
+ * DELETE /api/products/:id
+ */
+const deleteProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findOne({
+      where: {
+        id: id,
+        tenant_id: req.user.tenant_id,
+        customer_id: req.user.id
+      }
+    });
+    
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ürün bulunamadı'
+      });
+    }
+
+    await product.destroy();
+
+    logger.info(`Product deleted: ${product.id} - ${product.name} by user ${req.user.id}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Ürün başarıyla silindi'
+    });
+
+  } catch (error) {
+    logger.error('Error deleting product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ürün silinirken hata oluştu',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get product statistics
+ * GET /api/products/stats
+ */
+const getProductStats = async (req, res) => {
+  try {
+    const { Product } = require('../models');
+    const { Op } = require('sequelize');
+
+    const whereClause = {
+      tenant_id: req.user.tenant_id,
+      customer_id: req.user.id
+    };
+
+    const [
+      totalProducts,
+      activeProducts,
+      inactiveProducts,
+      draftProducts,
+      totalValue,
+      lowStockProducts
+    ] = await Promise.all([
+      Product.count({ where: whereClause }),
+      Product.count({ where: { ...whereClause, status: 'active' } }),
+      Product.count({ where: { ...whereClause, status: 'inactive' } }),
+      Product.count({ where: { ...whereClause, status: 'draft' } }),
+      Product.sum('price', { where: whereClause }),
+      Product.count({ where: { ...whereClause, stock: { [Op.lt]: 10 } } })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        total: totalProducts,
+        active: activeProducts,
+        inactive: inactiveProducts,
+        draft: draftProducts,
+        totalValue: totalValue || 0,
+        lowStock: lowStockProducts
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error fetching product stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'İstatistikler getirilemedi',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Send product to marketplaces
+ * POST /api/products/:id/send-to-marketplaces
+ */
+async function sendProductToMarketplaces(req, res) {
+  const startTime = Date.now();
+  const { id } = req.params;
+  const { marketplaces } = req.body;
+  const { customer_id, tenant_id } = req.user;
+
+  logger.info(`🚀 Pazaryerine gönderme işlemi başlatılıyor - Product ID: ${id}, Customer ID: ${customer_id}, Marketplaces: ${marketplaces.join(', ')}`);
+
+  try {
+    // Input validation
+    if (!marketplaces || !Array.isArray(marketplaces) || marketplaces.length === 0) {
+      logger.warn(`⚠️ Geçersiz marketplace listesi - Product ID: ${id}, Marketplaces: ${JSON.stringify(marketplaces)}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Geçerli bir marketplace listesi sağlanmalıdır'
+      });
+    }
+
+    // Find product
+    logger.info(`🔍 Ürün aranıyor - Product ID: ${id}`);
+    const product = await Product.findByPk(id);
+
+    if (!product) {
+      logger.warn(`⚠️ Ürün bulunamadı - Product ID: ${id}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Ürün bulunamadı'
+      });
+    }
+
+    logger.info(`✅ Ürün bulundu - Product ID: ${id}, Name: ${product.name}`);
+
+    // Send to marketplaces
+    logger.info(`📤 Pazaryerlerine gönderme başlatılıyor - Product: ${product.name}, Marketplaces: ${marketplaces.join(', ')}`);
+    const result = await sendToMarketplaces(product, marketplaces);
+
+    const duration = Date.now() - startTime;
+    
+    if (result.success.length > 0) {
+      logger.info(`✅ Pazaryerine gönderme başarılı - Product ID: ${id}, Başarılı: ${result.success.join(', ')}, Süre: ${duration}ms`);
+    }
+    
+    if (result.failed.length > 0) {
+      logger.warn(`⚠️ Pazaryerine gönderme kısmen başarısız - Product ID: ${id}, Başarısız: ${result.failed.join(', ')}, Süre: ${duration}ms`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Pazaryerlerine gönderme işlemi tamamlandı',
+      data: {
+        productId: id,
+        productName: product.name,
+        success: result.success,
+        failed: result.failed,
+        duration: duration
+      }
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error(`❌ Pazaryerine gönderme hatası - Product ID: ${id}, Customer ID: ${customer_id}, Hata: ${error.message}, Süre: ${duration}ms`);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Pazaryerlerine gönderme sırasında bir hata oluştu',
+      error: error.message,
+      duration: duration
+    });
+  }
+}
+
 module.exports = {
-  getWooCommerceProducts,
-  getTrendyolProducts,
-  syncProducts,
-  getStocksAndPrices,
-  updateStockPrice,
-  getSyncLogs
-}; 
+  createProduct,
+  bulkUploadProducts,
+  getAllProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct,
+  getProductStats,
+  sendProductToMarketplaces,
+  upload
+};

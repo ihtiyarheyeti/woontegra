@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 require('dotenv').config();
 
 const logger = require('./utils/logger');
@@ -10,14 +11,14 @@ const routes = require('./routes');
 const { initializeCronJobs } = require('./utils/cronJobs');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3001; // Kalıcı olarak 3001 portu - değiştirmeyin!
 
 // Security middleware
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://yourdomain.com'] 
-    : ['http://localhost:3001', 'http://localhost:5173'],
+    : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true
 }));
 
@@ -34,6 +35,10 @@ app.use('/api/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/templates', express.static(path.join(__dirname, 'public/templates')));
 
 // Request logging middleware
 app.use((req, res, next) => {

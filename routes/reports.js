@@ -1,24 +1,25 @@
 const express = require('express');
 const router = express.Router();
-const reportController = require('../controllers/reportController');
-const { validateApiKey } = require('../middleware/auth');
+const reportsController = require('../controllers/reportsController');
+const { authenticateToken } = require('../middleware/auth');
 
-// Apply API key validation to all routes
-router.use(validateApiKey);
+// Apply JWT authentication to all routes
+router.use(authenticateToken);
 
 // Get summary statistics
-router.get('/summary', reportController.getSummary);
+router.get('/summary', reportsController.getSummary);
 
 // Get sales by month
-router.get('/sales-by-month', reportController.getSalesByMonth);
+router.get('/sales-by-month', reportsController.getSalesByMonth);
 
 // Get top products
-router.get('/top-products', reportController.getTopProducts);
+router.get('/top-products', reportsController.getTopProducts);
 
 // Get sync statistics
-router.get('/sync-stats', reportController.getSyncStats);
+router.get('/sync-stats', reportsController.getSyncStats);
 
 // Get order statistics
-router.get('/order-stats', reportController.getOrderStats);
+router.get('/order-stats', reportsController.getOrderStats);
 
 module.exports = router; 
+ 

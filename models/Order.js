@@ -7,6 +7,11 @@ const Order = sequelize.define('Order', {
     primaryKey: true,
     autoIncrement: true
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Kiracı ID'
+  },
   customer_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -81,6 +86,9 @@ const Order = sequelize.define('Order', {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
+    {
+      fields: ['tenant_id']
+    },
     {
       fields: ['woo_order_id']
     },

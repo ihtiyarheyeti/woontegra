@@ -438,3 +438,4 @@ module.exports = {
   getTrendyolSyncStatus,
   getTrendyolProducts
 }; 
+ 

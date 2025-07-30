@@ -11,6 +11,11 @@ const MarketplaceConnection = sequelize.define('MarketplaceConnection', {
     primaryKey: true,
     autoIncrement: true
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Kiracı ID'
+  },
   customer_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -55,3 +60,4 @@ const MarketplaceConnection = sequelize.define('MarketplaceConnection', {
 });
 
 module.exports = MarketplaceConnection; 
+ 

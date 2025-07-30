@@ -11,10 +11,14 @@ const Category = sequelize.define('Category', {
     primaryKey: true,
     autoIncrement: true
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Kiracı ID'
+  },
   name: {
     type: DataTypes.STRING(255),
     allowNull: false,
-    unique: true,
     comment: 'Kategori adı'
   },
   description: {
@@ -32,7 +36,14 @@ const Category = sequelize.define('Category', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
-  comment: 'Ürün kategorileri tablosu'
+  comment: 'Ürün kategorileri tablosu',
+  indexes: [
+    {
+      unique: true,
+      fields: ['tenant_id', 'name']
+    }
+  ]
 });
 
 module.exports = Category; 
+ 

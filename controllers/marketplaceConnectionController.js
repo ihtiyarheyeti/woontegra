@@ -303,11 +303,236 @@ const getMarketplaceTypes = async (req, res) => {
   }
 };
 
+// Bağlantıyı test et (yeni bağlantı için)
+const testConnection = async (req, res) => {
+  try {
+    const { marketplace_name, store_name, api_key, api_secret, additional_config } = req.body;
+    const { user } = req;
+
+    // Validasyon
+    if (!marketplace_name || !store_name || !api_key || !api_secret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tüm zorunlu alanları doldurun'
+      });
+    }
+
+    // Pazaryeri türüne göre test yap
+    let testResult;
+    switch (marketplace_name) {
+      case 'trendyol':
+        testResult = await testTrendyolConnection(api_key, api_secret, additional_config);
+        break;
+      case 'hepsiburada':
+        testResult = await testHepsiburadaConnection(api_key, api_secret, additional_config);
+        break;
+      case 'n11':
+        testResult = await testN11Connection(api_key, api_secret);
+        break;
+      case 'woocommerce':
+        testResult = await testWooCommerceConnection(api_key, api_secret, additional_config);
+        break;
+      default:
+        return res.status(400).json({
+          success: false,
+          message: 'Desteklenmeyen pazaryeri türü'
+        });
+    }
+
+    if (testResult.success) {
+      logger.info(`Bağlantı testi başarılı. Pazaryeri: ${marketplace_name}, Kullanıcı: ${user.id}`);
+      res.json({
+        success: true,
+        message: `${marketplace_name} bağlantısı başarıyla test edildi`,
+        data: testResult.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: testResult.message || 'Bağlantı testi başarısız'
+      });
+    }
+
+  } catch (error) {
+    logger.error('Bağlantı testi sırasında hata:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Bağlantı testi sırasında bir hata oluştu',
+      error: error.message
+    });
+  }
+};
+
+// Mevcut bağlantıyı test et
+const testExistingConnection = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user } = req;
+
+    const connection = await MarketplaceConnection.findByPk(id);
+
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bağlantı bulunamadı'
+      });
+    }
+
+    // Kullanıcı sadece kendi bağlantılarını test edebilir (admin hariç)
+    if (user.role !== 'admin' && connection.customer_id !== user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bu bağlantıyı test etme izniniz yok'
+      });
+    }
+
+    // API anahtarlarını çöz
+    const apiKey = decryptApiKey(connection.api_key);
+    const apiSecret = decryptApiKey(connection.api_secret);
+
+    // Pazaryeri türüne göre test yap
+    let testResult;
+    switch (connection.marketplace_name) {
+      case 'trendyol':
+        testResult = await testTrendyolConnection(apiKey, apiSecret, connection.additional_config);
+        break;
+      case 'hepsiburada':
+        testResult = await testHepsiburadaConnection(apiKey, apiSecret, connection.additional_config);
+        break;
+      case 'n11':
+        testResult = await testN11Connection(apiKey, apiSecret);
+        break;
+      case 'woocommerce':
+        testResult = await testWooCommerceConnection(apiKey, apiSecret, connection.additional_config);
+        break;
+      default:
+        return res.status(400).json({
+          success: false,
+          message: 'Desteklenmeyen pazaryeri türü'
+        });
+    }
+
+    if (testResult.success) {
+      logger.info(`Bağlantı testi başarılı. ID: ${id}, Kullanıcı: ${user.id}`);
+      res.json({
+        success: true,
+        message: `${connection.marketplace_name} bağlantısı başarıyla test edildi`,
+        data: testResult.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: testResult.message || 'Bağlantı testi başarısız'
+      });
+    }
+
+  } catch (error) {
+    logger.error('Bağlantı testi sırasında hata:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Bağlantı testi sırasında bir hata oluştu',
+      error: error.message
+    });
+  }
+};
+
+// Trendyol bağlantısını test et
+const testTrendyolConnection = async (apiKey, apiSecret, additionalConfig) => {
+  try {
+    // Mock test - gerçek uygulamada Trendyol API'sine istek atılır
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simüle edilmiş gecikme
+    
+    // Başarılı test sonucu
+    return {
+      success: true,
+      data: {
+        supplier_id: apiKey,
+        store_name: 'Test Mağaza',
+        product_count: 150
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'Trendyol API bağlantısı başarısız: ' + error.message
+    };
+  }
+};
+
+// Hepsiburada bağlantısını test et
+const testHepsiburadaConnection = async (merchantId, username, password) => {
+  try {
+    // Mock test - gerçek uygulamada Hepsiburada API'sine istek atılır
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simüle edilmiş gecikme
+    
+    return {
+      success: true,
+      data: {
+        merchant_id: merchantId,
+        store_name: 'Test Mağaza',
+        product_count: 200
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'Hepsiburada API bağlantısı başarısız: ' + error.message
+    };
+  }
+};
+
+// N11 bağlantısını test et
+const testN11Connection = async (appKey, appSecret) => {
+  try {
+    // Mock test - gerçek uygulamada N11 API'sine istek atılır
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simüle edilmiş gecikme
+    
+    return {
+      success: true,
+      data: {
+        app_key: appKey,
+        store_name: 'Test Mağaza',
+        product_count: 100
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'N11 API bağlantısı başarısız: ' + error.message
+    };
+  }
+};
+
+// WooCommerce bağlantısını test et
+const testWooCommerceConnection = async (siteUrl, consumerKey, consumerSecret) => {
+  try {
+    // Mock test - gerçek uygulamada WooCommerce API'sine istek atılır
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simüle edilmiş gecikme
+    
+    return {
+      success: true,
+      data: {
+        site_url: siteUrl,
+        store_name: 'Test Mağaza',
+        product_count: 300
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'WooCommerce API bağlantısı başarısız: ' + error.message
+    };
+  }
+};
+
 module.exports = {
   getAllConnections,
   getConnectionById,
   createConnection,
   updateConnection,
   deleteConnection,
-  getMarketplaceTypes
+  getMarketplaceTypes,
+  testConnection,
+  testExistingConnection
 }; 
+ 

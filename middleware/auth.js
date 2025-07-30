@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
-const { Customer } = require('../models');
+const { Customer, Tenant } = require('../models');
 const logger = require('../utils/logger');
 
 /**
- * JWT Token doğrulama middleware'i
+ * JWT Authentication Middleware
+ * Verifies JWT token and adds user to request object
  */
 const authenticateToken = async (req, res, next) => {
   try {
@@ -13,125 +14,204 @@ const authenticateToken = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Access token required'
+        message: 'Erişim token\'ı gerekli'
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     
-    // Kullanıcıyı veritabanından kontrol et
-    const customer = await Customer.findByPk(decoded.userId);
-    
-    if (!customer || !customer.is_active) {
+    // Get user from database with tenant info
+    const user = await Customer.findByPk(decoded.id, {
+      attributes: { exclude: ['password', 'refresh_token'] },
+      include: [{
+        model: Tenant,
+        as: 'tenant',
+        attributes: ['id', 'name', 'status', 'plan', 'max_users', 'max_connections']
+      }]
+    });
+
+    if (!user || !user.is_active) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid or inactive user'
+        message: 'Geçersiz token veya kullanıcı aktif değil'
       });
     }
 
-    // Kullanıcı bilgilerini request'e ekle
-    req.user = {
-      id: customer.id,
-      name: customer.name,
-      email: customer.email,
-      role: customer.role || 'user' // Varsayılan rol 'user'
-    };
+    // Check if tenant is active
+    if (user.tenant && user.tenant.status !== 'active') {
+      return res.status(401).json({
+        success: false,
+        message: 'Kiracı hesabınız aktif değil'
+      });
+    }
 
+    // Add user and tenant info to request object
+    req.user = {
+      ...user.toJSON(),
+      tenant_id: user.tenant_id || decoded.tenant_id
+    };
     next();
   } catch (error) {
     logger.error('JWT authentication error:', error);
-    return res.status(403).json({
-      success: false,
-      message: 'Invalid token'
-    });
-  }
-};
-
-/**
- * API Key doğrulama middleware'i
- */
-const validateApiKey = async (req, res, next) => {
-  try {
-    const apiKey = req.headers['x-api-key'];
-
-    if (!apiKey) {
+    
+    if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
-        message: 'API key required'
+        message: 'Token süresi dolmuş'
+      });
+    }
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Geçersiz token'
       });
     }
 
-    const customer = await Customer.findOne({
-      where: { 
-        api_key: apiKey,
-        is_active: true
-      }
-    });
-
-    if (!customer) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid API key'
-      });
-    }
-
-    // Kullanıcı bilgilerini request'e ekle
-    req.user = {
-      id: customer.id,
-      name: customer.name,
-      email: customer.email,
-      role: customer.role || 'user' // Varsayılan rol 'user'
-    };
-
-    next();
-  } catch (error) {
-    logger.error('API key validation error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Token doğrulama hatası'
     });
   }
 };
 
 /**
- * Rol tabanlı yetkilendirme middleware'i
+ * Admin Authorization Middleware
+ * Checks if user has admin role
  */
-const requireRole = (allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
+const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Kimlik doğrulama gerekli'
+    });
+  }
 
-    const userRole = req.user.role;
-    
-    if (!allowedRoles.includes(userRole)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Insufficient permissions'
-      });
-    }
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Admin yetkisi gerekli'
+    });
+  }
 
-    next();
-  };
+  next();
 };
 
 /**
- * Admin yetkilendirme middleware'i
+ * Editor Authorization Middleware
+ * Checks if user has editor or admin role
  */
-const requireAdmin = requireRole(['admin']);
+const requireEditor = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Kimlik doğrulama gerekli'
+    });
+  }
+
+  if (req.user.role !== 'editor' && req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Düzenleme yetkisi gerekli'
+    });
+  }
+
+  next();
+};
 
 /**
- * User yetkilendirme middleware'i
+ * Viewer Authorization Middleware
+ * Checks if user has any valid role
  */
-const requireUser = requireRole(['admin', 'user']);
+const requireViewer = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Kimlik doğrulama gerekli'
+    });
+  }
+
+  if (!['admin', 'editor', 'viewer'].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Görüntüleme yetkisi gerekli'
+    });
+  }
+
+  next();
+};
+
+/**
+ * Tenant Access Middleware
+ * Ensures user can only access their own tenant data
+ */
+const requireTenantAccess = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Kimlik doğrulama gerekli'
+    });
+  }
+
+  // Admin users can access all tenants
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  // Other users can only access their own tenant
+  const requestedTenantId = req.params.tenantId || req.body.tenant_id || req.query.tenant_id;
+  
+  if (requestedTenantId && parseInt(requestedTenantId) !== req.user.tenant_id) {
+    return res.status(403).json({
+      success: false,
+      message: 'Bu kiracıya erişim yetkiniz yok'
+    });
+  }
+
+  next();
+};
+
+/**
+ * Optional Authentication Middleware
+ * Adds user to request if token exists, but doesn't require it
+ */
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      const user = await Customer.findByPk(decoded.id, {
+        attributes: { exclude: ['password', 'refresh_token'] },
+        include: [{
+          model: Tenant,
+          as: 'tenant',
+          attributes: ['id', 'name', 'status', 'plan', 'max_users', 'max_connections']
+        }]
+      });
+
+      if (user && user.is_active && user.tenant && user.tenant.status === 'active') {
+        req.user = {
+          ...user.toJSON(),
+          tenant_id: user.tenant_id || decoded.tenant_id
+        };
+      }
+    }
+  } catch (error) {
+    // Ignore token errors for optional auth
+    logger.debug('Optional auth token error:', error.message);
+  }
+
+  next();
+};
 
 module.exports = {
   authenticateToken,
-  validateApiKey,
-  requireRole,
   requireAdmin,
-  requireUser
+  requireEditor,
+  requireViewer,
+  requireTenantAccess,
+  optionalAuth
 }; 

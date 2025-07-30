@@ -22,17 +22,43 @@ const Customer = sequelize.define('Customer', {
     unique: true,
     comment: 'E-posta adresi'
   },
-  api_key: {
+  password: {
     type: DataTypes.STRING(255),
     allowNull: false,
+    comment: 'Şifre (bcrypt ile hashlenmiş)'
+  },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Kiracı ID'
+  },
+  api_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
     unique: true,
     comment: 'API anahtarı'
   },
   role: {
-    type: DataTypes.ENUM('admin', 'user'),
+    type: DataTypes.ENUM('admin', 'editor', 'viewer'),
     allowNull: false,
-    defaultValue: 'user',
-    comment: 'Kullanıcı rolü'
+    defaultValue: 'viewer',
+    comment: 'Kullanıcı rolü (admin: tam yetki, editor: düzenleme, viewer: sadece görüntüleme)'
+  },
+  refresh_token: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Refresh token (JWT yenileme için)'
+  },
+  last_login: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Son giriş tarihi'
+  },
+  login_count: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Giriş sayısı'
   },
   woo_consumer_key: {
     type: DataTypes.STRING(255),
@@ -63,6 +89,87 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.STRING(255),
     allowNull: true,
     comment: 'Trendyol Supplier ID'
+  },
+  // Yeni pazaryeri bağlantı alanları
+  trendyol_seller_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Trendyol Seller ID'
+  },
+  trendyol_integration_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Trendyol Integration Reference Code'
+  },
+  trendyol_api_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Trendyol API Key'
+  },
+  trendyol_api_secret: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Trendyol API Secret'
+  },
+  trendyol_token: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    comment: 'Trendyol Access Token'
+  },
+  hepsiburada_api_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Hepsiburada API anahtarı'
+  },
+  hepsiburada_api_secret: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Hepsiburada API gizli anahtarı'
+  },
+  hepsiburada_merchant_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Hepsiburada Merchant ID'
+  },
+  n11_app_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'N11 App Key'
+  },
+  n11_app_secret: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'N11 App Secret'
+  },
+  ciceksepeti_dealer_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'ÇiçekSepeti Dealer Code'
+  },
+  ciceksepeti_api_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'ÇiçekSepeti API Key'
+  },
+  ciceksepeti_secret_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'ÇiçekSepeti Secret Key'
+  },
+  pazarama_merchant_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Pazarama Merchant ID'
+  },
+  pazarama_api_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Pazarama API Key'
+  },
+  pazarama_secret_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Pazarama Secret Key'
   },
   is_active: {
     type: DataTypes.BOOLEAN,

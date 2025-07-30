@@ -7,6 +7,11 @@ const SyncLog = sequelize.define('SyncLog', {
     primaryKey: true,
     autoIncrement: true
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Kiracı ID'
+  },
   customer_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -45,6 +50,9 @@ const SyncLog = sequelize.define('SyncLog', {
   createdAt: 'created_at',
   updatedAt: false,
   indexes: [
+    {
+      fields: ['tenant_id']
+    },
     {
       fields: ['operation_type']
     },

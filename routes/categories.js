@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const categoryController = require('../controllers/categoryController');
-const { validateApiKey } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
-// Apply API key validation to all routes
-router.use(validateApiKey);
+// Apply JWT authentication to all routes
+router.use(authenticateToken);
 
 // Get all categories with pagination and filtering
 router.get('/', categoryController.getAllCategories);

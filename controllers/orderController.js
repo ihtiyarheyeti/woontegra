@@ -7,7 +7,7 @@ const logger = require('../utils/logger');
  */
 const getAllOrders = async (req, res) => {
   try {
-    const { customer_id } = req.user;
+    const customer_id = req.user.id;
     const { page = 1, limit = 10, status } = req.query;
     
     const offset = (page - 1) * limit;
@@ -50,7 +50,7 @@ const getAllOrders = async (req, res) => {
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_id } = req.user;
+    const customer_id = req.user.id;
     
     const order = await Order.findOne({
       where: { id, customer_id }
@@ -84,7 +84,7 @@ const getOrderById = async (req, res) => {
 const getOrdersByStatus = async (req, res) => {
   try {
     const { status } = req.params;
-    const { customer_id } = req.user;
+    const customer_id = req.user.id;
     const { page = 1, limit = 10 } = req.query;
     
     const offset = (page - 1) * limit;
@@ -123,7 +123,7 @@ const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const { customer_id } = req.user;
+    const customer_id = req.user.id;
     
     const order = await Order.findOne({
       where: { id, customer_id }
@@ -159,7 +159,7 @@ const updateOrderStatus = async (req, res) => {
  */
 const syncOrdersFromTrendyol = async (req, res) => {
   try {
-    const { customer_id } = req.user;
+    const customer_id = req.user.id;
     
     logger.info(`Trendyol order sync triggered for customer ${customer_id}`);
     
@@ -191,9 +191,31 @@ const syncOrdersFromTrendyol = async (req, res) => {
  */
 const getOrderStats = async (req, res) => {
   try {
-    const { customer_id } = req.user;
+    const customer_id = req.user.id;
     
-    const stats = await Order.findAll({
+    // Get total orders
+    const totalOrders = await Order.count({
+      where: { customer_id }
+    });
+    
+    // Get pending orders
+    const pendingOrders = await Order.count({
+      where: { 
+        customer_id,
+        status: 'pending'
+      }
+    });
+    
+    // Get total revenue (sum of all order totals)
+    const totalRevenue = await Order.sum('total_amount', {
+      where: { 
+        customer_id,
+        status: 'completed' // Only count completed orders for revenue
+      }
+    });
+    
+    // Get orders by status for detailed stats
+    const statsByStatus = await Order.findAll({
       where: { customer_id },
       attributes: [
         'status',
@@ -202,15 +224,13 @@ const getOrderStats = async (req, res) => {
       group: ['status']
     });
     
-    const totalOrders = await Order.count({
-      where: { customer_id }
-    });
-    
     res.json({
       success: true,
       data: {
-        stats,
-        total: totalOrders
+        total: totalOrders,
+        pending: pendingOrders,
+        totalRevenue: totalRevenue || 0,
+        statsByStatus: statsByStatus
       }
     });
   } catch (error) {

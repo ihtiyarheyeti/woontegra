@@ -34,21 +34,20 @@ async function testConnection() {
 // Initialize database tables
 async function initializeTables() {
   try {
-    // Import models
-    const Customer = require('../models/Customer');
-    const Product = require('../models/Product');
-    const Order = require('../models/Order');
-    const CategoryMapping = require('../models/CategoryMapping');
-    const SyncLog = require('../models/SyncLog');
-    const Category = require('../models/Category');
-    const MarketplaceConnection = require('../models/MarketplaceConnection');
+    // Import all models
+    const { 
+      Customer, 
+      Product, 
+      Order, 
+      CategoryMapping, 
+      SyncLog, 
+      Category, 
+      MarketplaceConnection,
+      Tenant 
+    } = require('../models');
 
-    // Define associations
-    Customer.hasMany(MarketplaceConnection, { foreignKey: 'customer_id', as: 'connections' });
-    MarketplaceConnection.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
-
-    // Sync all models with database
-    await sequelize.sync({ alter: true });
+    // Sync all models with database (don't force to preserve data)
+    await sequelize.sync({ force: false });
     
     logger.info('Database tables initialized successfully');
   } catch (error) {

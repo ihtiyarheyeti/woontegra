@@ -1,53 +1,39 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateToken, requireViewer } = require('../middleware/auth');
 const marketplaceConnectionController = require('../controllers/marketplaceConnectionController');
-const { authenticateToken, validateApiKey, requireUser } = require('../middleware/auth');
 
 /**
  * Marketplace Connections Routes
  * Pazaryeri bağlantıları için API endpoint'leri
  */
 
-// JWT veya API Key authentication (ikisinden biri yeterli)
-const authenticate = (req, res, next) => {
-  // Önce JWT token kontrol et
-  const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authenticateToken(req, res, next);
-  }
-  
-  // JWT yoksa API key kontrol et
-  const apiKey = req.headers['x-api-key'];
-  if (apiKey) {
-    return validateApiKey(req, res, next);
-  }
-  
-  // Hiçbiri yoksa hata döndür
-  return res.status(401).json({
-    success: false,
-    message: 'Access token or API key required'
-  });
-};
+// Apply JWT authentication to all routes
+router.use(authenticateToken);
 
-// Tüm route'lar için authentication gerekli
-router.use(authenticate);
+// Get marketplace types (Viewer+)
+router.get('/types', requireViewer, marketplaceConnectionController.getMarketplaceTypes);
 
-// Pazaryeri türlerini getir
-router.get('/types', requireUser, marketplaceConnectionController.getMarketplaceTypes);
+// Get all connections (Viewer+)
+router.get('/', requireViewer, marketplaceConnectionController.getAllConnections);
 
-// Tüm bağlantıları listele
-router.get('/', requireUser, marketplaceConnectionController.getAllConnections);
+// Get connection by ID (Viewer+)
+router.get('/:id', requireViewer, marketplaceConnectionController.getConnectionById);
 
-// Belirli bir bağlantıyı getir
-router.get('/:id', requireUser, marketplaceConnectionController.getConnectionById);
+// Create new connection (Viewer+)
+router.post('/', requireViewer, marketplaceConnectionController.createConnection);
 
-// Yeni bağlantı oluştur
-router.post('/', requireUser, marketplaceConnectionController.createConnection);
+// Update connection (Viewer+)
+router.put('/:id', requireViewer, marketplaceConnectionController.updateConnection);
 
-// Bağlantıyı güncelle
-router.put('/:id', requireUser, marketplaceConnectionController.updateConnection);
+// Delete connection (Viewer+)
+router.delete('/:id', requireViewer, marketplaceConnectionController.deleteConnection);
 
-// Bağlantıyı sil
-router.delete('/:id', requireUser, marketplaceConnectionController.deleteConnection);
+// Test connection (Viewer+)
+router.post('/test', requireViewer, marketplaceConnectionController.testConnection);
+
+// Test existing connection (Viewer+)
+router.post('/:id/test', requireViewer, marketplaceConnectionController.testExistingConnection);
 
 module.exports = router; 
+ 

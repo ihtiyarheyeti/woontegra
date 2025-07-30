@@ -404,3 +404,4 @@ const TrendyolSync: React.FC = () => {
 };
 
 export default TrendyolSync; 
+ 
