@@ -29,8 +29,8 @@ interface WooProduct {
   date_modified: string;
 }
 
-// Cache duration in milliseconds (5 minutes)
-const CACHE_DURATION = 5 * 60 * 1000;
+// Cache duration in milliseconds (30 minutes)
+const CACHE_DURATION = 30 * 60 * 1000;
 
 const WooProductList: React.FC = () => {
   const [products, setProducts] = useState<WooProduct[]>([]);
@@ -98,35 +98,20 @@ const WooProductList: React.FC = () => {
           setFetchProgress(100);
           setFetchStatus('Tamamlandı!');
           console.log(`✅ WooCommerce ürünleri başarıyla getirildi - Ürün Sayısı: ${productsData.length}, Süre: ${duration}ms`);
-          toast.success(`${productsData.length} ürün başarıyla getirildi (${duration}ms)`);
-          
-          // Reset progress after a short delay
-          setTimeout(() => {
-            setFetchProgress(0);
-            setFetchStatus('');
-            setIsFetching(false);
-          }, 2000);
         } else {
-          console.error('❌ API\'den gelen veri array değil:', productsData);
-          setError('API\'den gelen veri formatı hatalı');
-          toast.error('Veri formatı hatası');
-          setIsFetching(false);
+          throw new Error('API yanıtı geçerli bir ürün listesi değil');
         }
       } else {
-        setError(response.data.message);
-        console.error(`❌ WooCommerce ürünleri alınırken hata - Mesaj: ${response.data.message}, Süre: ${duration}ms`);
-        toast.error(response.data.message);
-        setIsFetching(false);
+        throw new Error(response.data.message || 'Ürünler getirilemedi');
       }
-    } catch (err: any) {
-      const duration = Date.now() - startTime;
-      const errorMessage = err.response?.data?.message || 'WooCommerce ürünleri alınırken hata oluştu';
-      setError(errorMessage);
-      console.error(`❌ WooCommerce ürünleri alınırken hata - Hata: ${errorMessage}, Süre: ${duration}ms`, err);
-      toast.error(errorMessage);
-      setIsFetching(false);
+    } catch (error: any) {
+      console.error('❌ WooCommerce ürünleri alınırken hata - Hata:', error.message, 'Süre:', Date.now() - startTime, 'ms', error);
+      setError(error.response?.data?.message || error.message || 'Ürünler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
+      setIsFetching(false);
+      setFetchProgress(0);
+      setFetchStatus('');
     }
   };
 
@@ -163,34 +148,33 @@ const WooProductList: React.FC = () => {
     fetchProducts(true);
   };
 
-  // WooCommerce ürünlerini senkronize et
+  // Sync products with WooCommerce
   const syncProducts = async () => {
     const startTime = Date.now();
-    console.log('🔄 WooCommerce senkronizasyonu başlatılıyor...');
     
     try {
       setSyncing(true);
+      setError(null);
+      
+      console.log('🔄 WooCommerce senkronizasyonu başlatılıyor...');
       
       const response = await api.post('/woocommerce/sync');
       
       const duration = Date.now() - startTime;
       
       if (response.data.success) {
-        const { synced, updated, errors } = response.data.data;
-        console.log(`✅ WooCommerce senkronizasyonu tamamlandı - Yeni: ${synced}, Güncellenen: ${updated}, Hata: ${errors}, Süre: ${duration}ms`);
-        toast.success(`Senkronizasyon tamamlandı! ${synced} yeni, ${updated} güncellendi (${duration}ms)`);
+        console.log(`✅ WooCommerce senkronizasyonu tamamlandı - Süre: ${duration}ms`);
+        toast.success('Ürünler başarıyla senkronize edildi!');
         
-        // Force refresh after sync to get latest data
-        await fetchProducts(true);
+        // Force refresh products after sync
+        fetchProducts(true);
       } else {
-        console.error(`❌ WooCommerce senkronizasyonu başarısız - Mesaj: ${response.data.message}, Süre: ${duration}ms`);
-        toast.error(response.data.message);
+        throw new Error(response.data.message || 'Senkronizasyon başarısız');
       }
-    } catch (err: any) {
-      const duration = Date.now() - startTime;
-      const errorMessage = err.response?.data?.message || 'Senkronizasyon sırasında hata oluştu';
-      console.error(`❌ WooCommerce senkronizasyonu hatası - Hata: ${errorMessage}, Süre: ${duration}ms`, err);
-      toast.error(errorMessage);
+    } catch (error: any) {
+      console.error('❌ WooCommerce senkronizasyonu hatası:', error);
+      setError(error.response?.data?.message || error.message || 'Senkronizasyon sırasında bir hata oluştu');
+      toast.error('Senkronizasyon başarısız!');
     } finally {
       setSyncing(false);
     }
@@ -208,10 +192,17 @@ const WooProductList: React.FC = () => {
     setSelectedProduct(null);
   };
 
-  // Component mount olduğunda ürünleri getir
+  // Load products on component mount
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    // Only fetch if we don't have valid cached data
+    if (!isCacheValid() || products.length === 0) {
+      fetchProducts();
+    } else {
+      // If we have valid cache, just set loading to false
+      setLoading(false);
+      setIsFromCache(true);
+    }
+  }, []); // Empty dependency array - only run once on mount
 
   // Fiyat formatla
   const formatPrice = (price: string) => {
@@ -237,7 +228,9 @@ const WooProductList: React.FC = () => {
 
   // Cache durumunu göster
   const getCacheStatus = () => {
-    if (!lastFetchTime) return 'Hiç yüklenmedi';
+    if (!lastFetchTime) {
+      return 'Önbellek yok';
+    }
     
     const timeDiff = Date.now() - lastFetchTime;
     const minutes = Math.floor(timeDiff / 60000);

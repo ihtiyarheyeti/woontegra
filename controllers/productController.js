@@ -730,12 +730,14 @@ const getProductStats = async (req, res) => {
   try {
     const { Product } = require('../models');
     const { Op } = require('sequelize');
+    const WooCommerceAPIClient = require('../services/WooCommerceAPIClient');
 
     const whereClause = {
       tenant_id: req.user.tenant_id,
       customer_id: req.user.id
     };
 
+    // Get database product stats
     const [
       totalProducts,
       activeProducts,
@@ -752,15 +754,56 @@ const getProductStats = async (req, res) => {
       Product.count({ where: { ...whereClause, stock: { [Op.lt]: 10 } } })
     ]);
 
+    // Get WooCommerce product count if user has WooCommerce connection
+    let wooCommerceProductCount = 0;
+    if (req.user.woo_store_url && req.user.woo_consumer_key && req.user.woo_consumer_secret) {
+      try {
+        const apiClient = new WooCommerceAPIClient(
+          req.user.woo_store_url,
+          req.user.woo_consumer_key,
+          req.user.woo_consumer_secret
+        );
+        
+        // Get total product count from WooCommerce
+        const products = await apiClient.getProducts(1, 1, 'publish');
+        if (products && Array.isArray(products)) {
+          // WooCommerce API doesn't return total count directly, so we need to count all products
+          let page = 1;
+          let hasMoreProducts = true;
+          let totalWooProducts = 0;
+          
+          while (hasMoreProducts) {
+            const pageProducts = await apiClient.getProducts(page, 100, 'publish');
+            if (pageProducts && pageProducts.length > 0) {
+              totalWooProducts += pageProducts.length;
+              page++;
+            } else {
+              hasMoreProducts = false;
+            }
+          }
+          
+          wooCommerceProductCount = totalWooProducts;
+        }
+      } catch (wooError) {
+        logger.warn('WooCommerce product count fetch failed:', wooError.message);
+        // Continue without WooCommerce count
+      }
+    }
+
+    // Use the higher count between database and WooCommerce
+    const finalTotalProducts = Math.max(totalProducts, wooCommerceProductCount);
+
     res.status(200).json({
       success: true,
       data: {
-        total: totalProducts,
+        total: finalTotalProducts,
         active: activeProducts,
         inactive: inactiveProducts,
         draft: draftProducts,
         totalValue: totalValue || 0,
-        lowStock: lowStockProducts
+        lowStock: lowStockProducts,
+        wooCommerceCount: wooCommerceProductCount,
+        databaseCount: totalProducts
       }
     });
 
