@@ -22,19 +22,25 @@ const Login: React.FC = () => {
   const onSubmit = async (data: LoginFormData) => {
     setLoading(true);
     try {
+      console.log('🔐 Login attempt:', data.email);
       const response = await axios.post('http://localhost:3001/api/auth/login', data); // Kalıcı - değiştirmeyin!
+      
+      console.log('📡 Login response:', response.data);
       
       if (response.data.success) {
         // Save token to localStorage
         localStorage.setItem('token', response.data.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.data));
         
+        console.log('✅ Login successful, token saved');
         toast.success('Giriş başarılı!');
-        navigate('/');
+        navigate('/dashboard');
       } else {
+        console.log('❌ Login failed:', response.data.message);
         toast.error(response.data.message || 'Giriş başarısız');
       }
     } catch (error: any) {
+      console.error('🚨 Login error:', error);
       const message = error.response?.data?.message || 'Giriş sırasında bir hata oluştu';
       toast.error(message);
     } finally {

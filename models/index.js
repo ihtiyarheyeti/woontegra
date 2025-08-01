@@ -8,6 +8,7 @@ const Brand = require('./Brand');
 const MarketplaceConnection = require('./MarketplaceConnection');
 const Tenant = require('./Tenant');
 const Package = require('./Package');
+const ProductSyncMap = require('./ProductSyncMap');
 
 // Package ilişkileri
 Package.hasMany(Tenant, { foreignKey: 'package_id', as: 'tenants' });
@@ -53,6 +54,17 @@ SyncLog.belongsTo(Customer, { foreignKey: 'customer_id', as: 'syncLogCustomer' }
 Customer.hasMany(MarketplaceConnection, { foreignKey: 'customer_id', as: 'customerMarketplaceConnections' });
 MarketplaceConnection.belongsTo(Customer, { foreignKey: 'customer_id', as: 'marketplaceConnectionCustomer' });
 
+// CategoryMapping ilişkileri
+Tenant.hasMany(CategoryMapping, { foreignKey: 'tenant_id', as: 'categoryMappings' });
+CategoryMapping.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+Customer.hasMany(CategoryMapping, { foreignKey: 'customer_id', as: 'customerCategoryMappings' });
+CategoryMapping.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+
+// ProductSyncMap ilişkileri
+Customer.hasMany(ProductSyncMap, { foreignKey: 'customer_id', as: 'customerProductSyncMaps' });
+ProductSyncMap.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+
 module.exports = {
   Customer,
   Product,
@@ -63,5 +75,6 @@ module.exports = {
   Brand,
   MarketplaceConnection,
   Tenant,
-  Package
+  Package,
+  ProductSyncMap
 }; 

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import MarketplaceSendModal from './MarketplaceSendModal';
+import { Search, Filter, Send, RefreshCw, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { useProductContext } from '../contexts/ProductContext';
 
 interface WooProduct {
   id: number;
@@ -29,86 +30,42 @@ interface WooProduct {
   date_modified: string;
 }
 
-// Cache duration in milliseconds (30 minutes)
-const CACHE_DURATION = 30 * 60 * 1000;
-
 const WooProductList: React.FC = () => {
-  const [products, setProducts] = useState<WooProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  // Global product context
+  const { products, loading, error, hasLoaded, lastFetchTime, fetchProducts } = useProductContext();
+  
+  // Local state
   const [showMarketplaceModal, setShowMarketplaceModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<WooProduct | null>(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-
-  // Cache state
-  const [lastFetchTime, setLastFetchTime] = useState<number | null>(null);
-  const [isFromCache, setIsFromCache] = useState(false);
-
-  // Progress state
+  
+  // Progress state (for UI feedback)
   const [fetchProgress, setFetchProgress] = useState(0);
   const [fetchStatus, setFetchStatus] = useState('');
   const [isFetching, setIsFetching] = useState(false);
 
-  // Check if cache is valid
-  const isCacheValid = () => {
-    if (!lastFetchTime) return false;
-    return Date.now() - lastFetchTime < CACHE_DURATION;
-  };
+  // Filter and search state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
 
-  // WooCommerce ürünlerini getir
-  const fetchProducts = async (forceRefresh = false) => {
-    const startTime = Date.now();
-    
-    // Check cache first (unless force refresh)
-    if (!forceRefresh && isCacheValid() && products.length > 0) {
-      console.log('📦 Önbellekten ürünler yükleniyor...');
-      setIsFromCache(true);
-      setLoading(false);
-      return;
-    }
-
-    console.log('🔄 WooCommerce ürünleri getiriliyor...');
+  // Zorla yenileme fonksiyonu
+  const forceRefresh = async () => {
+    console.log('🔄 Zorla yenileme başlatılıyor...');
+    setIsFetching(true);
+    setFetchProgress(0);
+    setFetchStatus('Bağlantı kuruluyor...');
     
     try {
-      setLoading(true);
-      setError(null);
-      setIsFromCache(false);
-      setIsFetching(true);
-      setFetchProgress(0);
-      setFetchStatus('Bağlantı kuruluyor...');
-      
-      const response = await api.get('/woocommerce/products');
-      
-      const duration = Date.now() - startTime;
-      
-      if (response.data.success) {
-        const productsData = response.data.data;
-        console.log('Debug: API response data:', productsData);
-        console.log('Debug: productsData type:', typeof productsData);
-        console.log('Debug: productsData isArray:', Array.isArray(productsData));
-        
-        if (Array.isArray(productsData)) {
-          setProducts(productsData);
-          setLastFetchTime(Date.now()); // Update cache timestamp
-          setFetchProgress(100);
-          setFetchStatus('Tamamlandı!');
-          console.log(`✅ WooCommerce ürünleri başarıyla getirildi - Ürün Sayısı: ${productsData.length}, Süre: ${duration}ms`);
-        } else {
-          throw new Error('API yanıtı geçerli bir ürün listesi değil');
-        }
-      } else {
-        throw new Error(response.data.message || 'Ürünler getirilemedi');
-      }
-    } catch (error: any) {
-      console.error('❌ WooCommerce ürünleri alınırken hata - Hata:', error.message, 'Süre:', Date.now() - startTime, 'ms', error);
-      setError(error.response?.data?.message || error.message || 'Ürünler yüklenirken bir hata oluştu');
+      await fetchProducts(true);
+      setFetchProgress(100);
+      setFetchStatus('Tamamlandı!');
+    } catch (error) {
+      console.error('Yenileme hatası:', error);
     } finally {
-      setLoading(false);
       setIsFetching(false);
       setFetchProgress(0);
       setFetchStatus('');
@@ -127,7 +84,7 @@ const WooProductList: React.FC = () => {
         
         // Update status messages
         if (fetchProgress < 20) {
-          setFetchStatus('WooCommerce API\'ye bağlanılıyor...');
+          setFetchStatus('API\'ye bağlanılıyor...');
         } else if (fetchProgress < 40) {
           setFetchStatus('Ürün listesi alınıyor...');
         } else if (fetchProgress < 60) {
@@ -143,43 +100,6 @@ const WooProductList: React.FC = () => {
     }
   }, [isFetching, fetchProgress]);
 
-  // Force refresh products (bypass cache)
-  const forceRefreshProducts = () => {
-    fetchProducts(true);
-  };
-
-  // Sync products with WooCommerce
-  const syncProducts = async () => {
-    const startTime = Date.now();
-    
-    try {
-      setSyncing(true);
-      setError(null);
-      
-      console.log('🔄 WooCommerce senkronizasyonu başlatılıyor...');
-      
-      const response = await api.post('/woocommerce/sync');
-      
-      const duration = Date.now() - startTime;
-      
-      if (response.data.success) {
-        console.log(`✅ WooCommerce senkronizasyonu tamamlandı - Süre: ${duration}ms`);
-        toast.success('Ürünler başarıyla senkronize edildi!');
-        
-        // Force refresh products after sync
-        fetchProducts(true);
-      } else {
-        throw new Error(response.data.message || 'Senkronizasyon başarısız');
-      }
-    } catch (error: any) {
-      console.error('❌ WooCommerce senkronizasyonu hatası:', error);
-      setError(error.response?.data?.message || error.message || 'Senkronizasyon sırasında bir hata oluştu');
-      toast.error('Senkronizasyon başarısız!');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   // Pazaryerine gönder modal'ını aç
   const handleSendToMarketplace = (product: WooProduct) => {
     setSelectedProduct(product);
@@ -192,17 +112,32 @@ const WooProductList: React.FC = () => {
     setSelectedProduct(null);
   };
 
-  // Load products on component mount
+  // Load products on component mount - sadece ürünler boşsa çek
   useEffect(() => {
-    // Only fetch if we don't have valid cached data
-    if (!isCacheValid() || products.length === 0) {
+    if (products.length === 0) {
       fetchProducts();
-    } else {
-      // If we have valid cache, just set loading to false
-      setLoading(false);
-      setIsFromCache(true);
     }
   }, []); // Empty dependency array - only run once on mount
+
+  // Filtrelenmiş ürünler
+  const filteredProducts = useMemo(() => {
+    return products.filter(product => {
+      const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || 
+        product.categories.some(cat => cat.name === selectedCategory);
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchTerm, selectedCategory]);
+
+  // Kategoriler listesi
+  const categories = useMemo(() => {
+    const categorySet = new Set<string>();
+    products.forEach(product => {
+      product.categories.forEach(cat => categorySet.add(cat.name));
+    });
+    return Array.from(categorySet).sort();
+  }, [products]);
 
   // Fiyat formatla
   const formatPrice = (price: string) => {
@@ -226,28 +161,50 @@ const WooProductList: React.FC = () => {
     return 'text-green-600 bg-green-100';
   };
 
-  // Cache durumunu göster
-  const getCacheStatus = () => {
-    if (!lastFetchTime) {
-      return 'Önbellek yok';
-    }
-    
-    const timeDiff = Date.now() - lastFetchTime;
-    const minutes = Math.floor(timeDiff / 60000);
-    const seconds = Math.floor((timeDiff % 60000) / 1000);
-    
-    if (isCacheValid()) {
-      return `Önbellekten (${minutes}:${seconds.toString().padStart(2, '0')} önce)`;
+  // Checkbox işlemleri
+  const handleSelectProduct = (productId: number) => {
+    setSelectedProducts(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedProducts.length === filteredProducts.length) {
+      setSelectedProducts([]);
     } else {
-      return `Süresi dolmuş (${minutes}:${seconds.toString().padStart(2, '0')} önce)`;
+      setSelectedProducts(filteredProducts.map(p => p.id));
+    }
+  };
+
+  // Toplu işlemler
+  const handleBulkSend = () => {
+    if (selectedProducts.length === 0) {
+      toast.error('Lütfen gönderilecek ürünleri seçin');
+      return;
+    }
+    toast.success(`${selectedProducts.length} ürün pazaryerine gönderiliyor...`);
+    // TODO: Implement bulk send functionality
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedProducts.length === 0) {
+      toast.error('Lütfen silinecek ürünleri seçin');
+      return;
+    }
+    if (window.confirm(`${selectedProducts.length} ürünü silmek istediğinizden emin misiniz?`)) {
+      toast.success(`${selectedProducts.length} ürün silindi`);
+      setSelectedProducts([]);
+      // TODO: Implement bulk delete functionality
     }
   };
 
   // Pagination calculations
-  const totalPages = Math.ceil(products.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentProducts = products.slice(startIndex, endIndex);
+  const currentProducts = filteredProducts.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -258,13 +215,14 @@ const WooProductList: React.FC = () => {
     setCurrentPage(1); // Reset to first page when changing items per page
   };
 
-  if (loading) {
+  // Loading state - sadece hiç veri yoksa göster
+  if (loading && products.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <span className="text-gray-600 mb-4">WooCommerce ürünleri yükleniyor...</span>
+            <span className="text-gray-600 mb-4">Ürünler yükleniyor...</span>
             
             {/* Progress Bar */}
             {isFetching && (
@@ -321,50 +279,47 @@ const WooProductList: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">WooCommerce Ürünleri</h1>
-              <div className="flex items-center space-x-4 mt-2">
-                <p className="text-gray-600">
-                  {products.length} ürün bulundu • Sayfa {currentPage} / {totalPages} • {startIndex + 1}-{Math.min(endIndex, products.length)} arası gösteriliyor
-                </p>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  isFromCache ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {getCacheStatus()}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              {/* View Mode Toggle */}
-              <div className="flex items-center space-x-2 bg-white rounded-lg border p-1">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    viewMode === 'list' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Ürünler</h1>
+          <div className="flex items-center space-x-4 mt-2">
+            <p className="text-gray-600">
+              {filteredProducts.length} ürün bulundu • Sayfa {currentPage} / {totalPages} • {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} arası gösteriliyor
+            </p>
+            {hasLoaded && lastFetchTime && (
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                Son güncelleme: {new Date(lastFetchTime).toLocaleTimeString('tr-TR')}
+                {loading && products.length > 0 && (
+                  <span className="ml-2 text-blue-600">🔄 Arka planda güncelleniyor...</span>
+                )}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Filters and Search */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0 lg:space-x-4">
+            {/* Left side - Filters */}
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+              {/* Category Filter */}
+              <div className="flex items-center space-x-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  Liste
-                </button>
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    viewMode === 'grid' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Grid
-                </button>
+                  <option value="all">Tüm Kategoriler</option>
+                  {categories.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
               </div>
 
-              {/* Items Per Page Selector */}
+              {/* Items Per Page */}
               <select
                 value={itemsPerPage}
                 onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
@@ -375,24 +330,63 @@ const WooProductList: React.FC = () => {
                 <option value={50}>50 ürün</option>
                 <option value={100}>100 ürün</option>
               </select>
+            </div>
 
-              <button
-                onClick={forceRefreshProducts}
-                disabled={isFetching}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {isFetching ? 'Yükleniyor...' : 'Yenile'}
-              </button>
-              <button
-                onClick={syncProducts}
-                disabled={syncing || isFetching}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-              >
-                {syncing ? 'Senkronize Ediliyor...' : 'Senkronize Et'}
-              </button>
+            {/* Right side - Search and Actions */}
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Ürün ara..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex space-x-2">
+                <button
+                  onClick={forceRefresh}
+                  disabled={isFetching}
+                  className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                  <span>{isFetching ? 'Yükleniyor...' : 'Senkronize Et'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Bulk Actions */}
+        {selectedProducts.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-blue-800">
+                {selectedProducts.length} ürün seçildi
+              </span>
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleBulkSend}
+                  className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Toplu Gönder</span>
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  className="flex items-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Seçilenleri Sil</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Progress Bar for Fetching */}
         {isFetching && (
@@ -413,280 +407,195 @@ const WooProductList: React.FC = () => {
           </div>
         )}
 
-        {/* Products List/Grid */}
-        {!Array.isArray(products) || products.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Ürün bulunamadı</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {!Array.isArray(products) ? 'Veri formatı hatası' : 'WooCommerce mağazanızda henüz ürün bulunmuyor.'}
-            </p>
-            {!Array.isArray(products) && (
-              <div className="mt-4 text-xs text-gray-500">
-                <p>Debug: products type = {typeof products}</p>
-                <p>Debug: products value = {JSON.stringify(products).substring(0, 200)}...</p>
-              </div>
-            )}
+        {/* Products Table */}
+        {!Array.isArray(products) || filteredProducts.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+            <div className="text-center">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Ürün bulunamadı</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {!Array.isArray(products) ? 'Veri formatı hatası' : 'Arama kriterlerinize uygun ürün bulunamadı.'}
+              </p>
+            </div>
           </div>
         ) : (
-          <>
-            {/* List View */}
-            {viewMode === 'list' ? (
-              <div className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Ürün
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          SKU
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Fiyat
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Stok
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Durum
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          İşlemler
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {currentProducts.map((product) => (
-                        <tr key={product.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="flex-shrink-0 h-12 w-12">
-                                <img
-                                  className="h-12 w-12 rounded-lg object-cover"
-                                  src={product.images[0]?.src || '/placeholder-product.jpg'}
-                                  alt={product.name}
-                                  onError={(e) => {
-                                    e.currentTarget.src = '/placeholder-product.jpg';
-                                  }}
-                                />
-                              </div>
-                              <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {product.name}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {product.categories.map(cat => cat.name).join(', ')}
-                                </div>
-                              </div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
+                        onChange={handleSelectAll}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ürün
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Fiyat
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Stok
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Durum
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Trendyol Eşleşme
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      İşlemler
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {currentProducts.map((product) => (
+                    <tr key={product.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedProducts.includes(product.id)}
+                          onChange={() => handleSelectProduct(product.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-12 w-12">
+                            <img
+                              className="h-12 w-12 rounded-lg object-cover"
+                              src={product.images[0]?.src || '/placeholder-product.jpg'}
+                              alt={product.name}
+                              onError={(e) => {
+                                e.currentTarget.src = '/placeholder-product.jpg';
+                              }}
+                            />
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {product.name}
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {product.sku || '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <div className="font-medium">{formatPrice(product.price)}</div>
-                            {product.sale_price && product.sale_price !== product.regular_price && (
-                              <div className="text-xs text-gray-500 line-through">
-                                {formatPrice(product.regular_price)}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStockColor(product.stock_status, product.stock_quantity)}`}>
-                              {getStockStatus(product.stock_status, product.stock_quantity)}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              product.status === 'publish' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {product.status === 'publish' ? 'Yayında' : 'Taslak'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <button
-                              onClick={() => handleSendToMarketplace(product)}
-                              className="text-blue-600 hover:text-blue-900 mr-3"
-                            >
-                              Pazaryerine Gönder
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              /* Grid View */
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {currentProducts.map((product) => (
-              <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-                {/* Product Image */}
-                <div className="aspect-w-1 aspect-h-1 w-full">
-                  <img
-                    src={product.images[0]?.src || '/placeholder-product.jpg'}
-                    alt={product.name}
-                    className="w-full h-48 object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = '/placeholder-product.jpg';
-                    }}
-                  />
-                </div>
-
-                {/* Product Info */}
-                <div className="p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
-                    {product.name}
-                  </h3>
-                   
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                    {product.description.replace(/<[^>]*>/g, '')}
-                  </p>
-
-                  {/* Price */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      {product.sale_price && product.sale_price !== product.regular_price ? (
-                        <div className="flex items-center space-x-2">
-                          <span className="text-lg font-bold text-green-600">
-                            {formatPrice(product.sale_price)}
-                          </span>
-                          <span className="text-sm text-gray-500 line-through">
-                            {formatPrice(product.regular_price)}
-                          </span>
+                            <div className="text-sm text-gray-500">
+                              SKU: {product.sku || '-'}
+                            </div>
+                          </div>
                         </div>
-                      ) : (
-                        <span className="text-lg font-bold text-gray-900">
-                          {formatPrice(product.price)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Stock Status */}
-                  <div className="flex items-center justify-between mb-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStockColor(product.stock_status, product.stock_quantity)}`}>
-                      {getStockStatus(product.stock_status, product.stock_quantity)}
-                    </span>
-                     
-                    {product.sku && (
-                      <span className="text-xs text-gray-500">
-                        SKU: {product.sku}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Categories */}
-                  {product.categories && product.categories.length > 0 && (
-                    <div className="mb-3">
-                      <div className="flex flex-wrap gap-1">
-                        {product.categories.slice(0, 2).map((category) => (
-                          <span
-                            key={category.id}
-                            className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-                          >
-                            {category.name}
-                          </span>
-                        ))}
-                        {product.categories.length > 2 && (
-                          <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                            +{product.categories.length - 2}
-                          </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="font-medium">{formatPrice(product.price)}</div>
+                        {product.sale_price && product.sale_price !== product.regular_price && (
+                          <div className="text-xs text-gray-500 line-through">
+                            {formatPrice(product.regular_price)}
+                          </div>
                         )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Send to Marketplace Button */}
-                  <div className="mt-4 pt-3 border-t border-gray-200">
-                    <button
-                      onClick={() => handleSendToMarketplace(product)}
-                      className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                    >
-                      Pazaryerine Gönder
-                    </button>
-                  </div>
-
-                  {/* Product Status */}
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>
-                        Durum: {product.status === 'publish' ? 'Yayında' : 'Taslak'}
-                      </span>
-                      <span>
-                        ID: {product.id}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStockColor(product.stock_status, product.stock_quantity)}`}>
+                          {getStockStatus(product.stock_status, product.stock_quantity)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${
+                          product.status === 'publish' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {product.status === 'publish' ? (
+                            <>
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Aktif
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3 h-3 mr-1" />
+                              Pasif
+                            </>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                          Eşleşmedi
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => handleSendToMarketplace(product)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          Pazaryerine Gönder
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-            )}
+        )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-700">
-                    Sayfa {currentPage} / {totalPages}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Önceki
-                  </button>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-700">
+                Sayfa {currentPage} / {totalPages}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Önceki
+              </button>
+              
+              {/* Page Numbers */}
+              <div className="flex items-center space-x-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
                   
-                                       {/* Page Numbers */}
-                    <div className="flex items-center space-x-1">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        let pageNum: number;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (currentPage <= 3) {
-                          pageNum = i + 1;
-                        } else if (currentPage >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = currentPage - 2 + i;
-                        }
-                        
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
-                            className={`px-3 py-2 text-sm font-medium rounded-md ${
-                              currentPage === pageNum
-                                ? 'bg-blue-600 text-white'
-                                : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    
-                  <button
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Sonraki
-                  </button>
-                </div>
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        currentPage === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </>
+              
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Sonraki
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Marketplace Send Modal */}

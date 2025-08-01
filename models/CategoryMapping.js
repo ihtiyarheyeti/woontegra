@@ -7,6 +7,14 @@ const CategoryMapping = sequelize.define('CategoryMapping', {
     primaryKey: true,
     autoIncrement: true
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'tenants',
+      key: 'id'
+    }
+  },
   customer_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -15,25 +23,44 @@ const CategoryMapping = sequelize.define('CategoryMapping', {
       key: 'id'
     }
   },
-  woo_category_id: {
-    type: DataTypes.INTEGER,
-    allowNull: true
+  local_category_id: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'WooCommerce kategorisinin ID\'si'
   },
-  trendyol_category_id: {
-    type: DataTypes.INTEGER,
-    allowNull: true
+  local_category_name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'WooCommerce kategori adı'
   },
-  woo_category_name: {
-    type: DataTypes.STRING(255),
-    allowNull: true
+  marketplace: {
+    type: DataTypes.ENUM('trendyol', 'hepsiburada', 'n11', 'ciceksepeti', 'pazarama'),
+    allowNull: false,
+    defaultValue: 'trendyol',
+    comment: 'Pazaryeri adı'
   },
-  trendyol_category_name: {
-    type: DataTypes.STRING(255),
-    allowNull: true
+  marketplace_category_id: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Pazaryeri kategori ID'
+  },
+  marketplace_category_name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Pazaryeri kategori adı'
   },
   is_active: {
     type: DataTypes.BOOLEAN,
-    defaultValue: true
+    defaultValue: true,
+    comment: 'Eşleşmenin aktif olup olmadığı'
+  },
+  created_at: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updated_at: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
   tableName: 'category_mappings',
@@ -42,9 +69,13 @@ const CategoryMapping = sequelize.define('CategoryMapping', {
   updatedAt: 'updated_at',
   indexes: [
     {
-      unique: true,
-      name: 'unique_mapping',
-      fields: ['customer_id', 'woo_category_id', 'trendyol_category_id']
+      fields: ['tenant_id', 'customer_id']
+    },
+    {
+      fields: ['local_category_id', 'marketplace']
+    },
+    {
+      fields: ['marketplace_category_id']
     }
   ]
 });

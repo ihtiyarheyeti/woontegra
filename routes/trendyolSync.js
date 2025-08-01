@@ -1,24 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, requireViewer } = require('../middleware/auth');
-const trendyolSyncController = require('../controllers/trendyolSyncController');
+const trendyolController = require('../controllers/trendyolController');
+const { authenticateToken } = require('../middleware/auth');
 
-/**
- * Trendyol Sync Routes
- * Trendyol senkronizasyonu için API endpoint'leri
- */
+// Ürünleri Trendyol'a gönder
+router.post('/send-products', authenticateToken, trendyolController.sendProducts);
 
-// Apply JWT authentication to all routes
-router.use(authenticateToken);
+// Trendyol kategorilerini getir
+router.get('/categories', authenticateToken, trendyolController.getCategories);
 
-// Sync products from Trendyol (Viewer+)
-router.post('/sync-products', requireViewer, trendyolSyncController.syncProductsFromTrendyol);
+// Ürün durumunu kontrol et
+router.get('/product-status/:productId', authenticateToken, trendyolController.checkProductStatus);
 
-// Get Trendyol sync status (Viewer+)
-router.get('/status', requireViewer, trendyolSyncController.getTrendyolSyncStatus);
+// Trendyol'dan ürünleri çek
+router.get('/pull-products', authenticateToken, trendyolController.pullProducts);
 
-// Get Trendyol products (Viewer+)
-router.get('/products', requireViewer, trendyolSyncController.getTrendyolProducts);
+// Seçilen ürünleri WooCommerce'a aktar
+router.post('/import-to-woocommerce', authenticateToken, trendyolController.importToWooCommerce);
 
 module.exports = router; 
  

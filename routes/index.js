@@ -12,6 +12,8 @@ const packageRoutes = require('./packages');
 const woocommerceRoutes = require('./woocommerce');
 const marketplaceRoutes = require('./marketplaces');
 const orderRoutes = require('./orders');
+const categoryMappingRoutes = require('./categoryMappings');
+const trendyolRoutes = require('./trendyolSync');
 
 // Mount routes
 router.use('/api/auth', authRoutes);
@@ -24,5 +26,7 @@ router.use('/api/packages', packageRoutes);
 router.use('/api/woocommerce', woocommerceRoutes);
 router.use('/api/marketplaces', marketplaceRoutes);
 router.use('/api/orders', orderRoutes);
+router.use('/api/category-mappings', categoryMappingRoutes);
+router.use('/api/trendyol', trendyolRoutes);
 
 module.exports = router; 

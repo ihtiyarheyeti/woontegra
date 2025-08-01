@@ -1,11 +1,12 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-class N11APIClient {
+class CiceksepetiAPIClient {
   constructor(user) {
-    this.appKey = user.n11_app_key;
-    this.appSecret = user.n11_app_secret;
-    this.baseUrl = 'https://api.n11.com/ws';
+    this.dealerCode = user.ciceksepeti_dealer_code;
+    this.apiKey = user.ciceksepeti_api_key;
+    this.secretKey = user.ciceksepeti_secret_key;
+    this.baseUrl = 'https://apis.ciceksepeti.com/api/v1';
     this.rateLimitDelay = 1000;
     this.maxRetries = 3;
   }
@@ -13,49 +14,35 @@ class N11APIClient {
   // Auth headers
   getAuthHeaders() {
     return {
-      'Content-Type': 'application/xml',
+      'x-api-key': this.apiKey,
+      'x-secret-key': this.secretKey,
+      'Content-Type': 'application/json',
       'User-Agent': 'Pazaryeri-Integration/1.0'
     };
   }
 
-  // SOAP request body oluştur
-  createSoapBody(method, data = {}) {
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schemas">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <sch:${method}Request>
-         <auth>
-            <appKey>${this.appKey}</appKey>
-            <appSecret>${this.appSecret}</appSecret>
-         </auth>
-         ${Object.keys(data).map(key => `<${key}>${data[key]}</${key}>`).join('')}
-      </sch:${method}Request>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-  }
-
   // API isteği yap
-  async makeRequest(method, data = {}) {
-    const url = this.baseUrl;
-    const soapBody = this.createSoapBody(method, data);
-    
+  async makeRequest(endpoint, method = 'GET', data = null) {
+    const url = `${this.baseUrl}${endpoint}`;
     const config = {
-      method: 'POST',
+      method,
       url,
       headers: this.getAuthHeaders(),
-      data: soapBody,
       timeout: 30000
     };
 
-    logger.info(`N11 API Request: POST ${url} - Method: ${method}`);
+    if (data && method !== 'GET') {
+      config.data = data;
+    }
+
+    logger.info(`Çiçeksepeti API Request: ${method} ${url}`);
 
     try {
       const response = await axios(config);
-      logger.info(`✅ N11 API Response: ${response.status}`);
+      logger.info(`✅ Çiçeksepeti API Response: ${response.status}`);
       return response.data;
     } catch (error) {
-      logger.error('N11 API Error:', error.response?.data || error.message);
+      logger.error('Çiçeksepeti API Error:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -63,34 +50,60 @@ class N11APIClient {
   // Kategorileri getir
   async getCategories() {
     try {
-      logger.info('🔍 Fetching N11 categories...');
+      logger.info('🔍 Fetching Çiçeksepeti categories...');
       
-      // N11 kategori endpoint'i
-      const response = await this.makeRequest('GetCategoryList');
+      // Çiçeksepeti kategori endpoint'i
+      const categories = await this.makeRequest('/categories');
       
-      // XML response'u parse et (basit implementasyon)
-      if (response && response.includes('categoryList')) {
-        logger.info(`✅ N11 categories fetched successfully`);
-        return this.parseCategoriesFromXML(response);
+      if (Array.isArray(categories)) {
+        logger.info(`✅ Çiçeksepeti categories fetched successfully. Count: ${categories.length}`);
+        return this.formatCategories(categories);
+      } else if (categories && categories.content && Array.isArray(categories.content)) {
+        logger.info(`✅ Çiçeksepeti categories fetched successfully. Count: ${categories.content.length}`);
+        return this.formatCategories(categories.content);
       } else {
-        logger.warn('N11 API returned unexpected response, using fallback');
+        logger.warn('Çiçeksepeti API returned non-array response, using fallback');
         return this.getFallbackCategories();
       }
     } catch (error) {
-      logger.error('Error fetching N11 categories:', error);
-      logger.info('Using fallback N11 categories');
+      logger.error('Error fetching Çiçeksepeti categories:', error);
+      logger.info('Using fallback Çiçeksepeti categories');
       return this.getFallbackCategories();
     }
   }
 
-  // XML'den kategorileri parse et (basit implementasyon)
-  parseCategoriesFromXML(xmlResponse) {
-    // Gerçek implementasyonda XML parser kullanılmalı
-    // Şimdilik fallback kategorileri döndür
-    return this.getFallbackCategories();
+  // Kategorileri hiyerarşik yapıya dönüştür
+  formatCategories(categories) {
+    const categoryMap = new Map();
+    const rootCategories = [];
+
+    // Önce tüm kategorileri map'e ekle
+    categories.forEach(cat => {
+      categoryMap.set(cat.id, {
+        id: cat.id.toString(),
+        name: cat.name,
+        children: []
+      });
+    });
+
+    // Parent-child ilişkilerini kur
+    categories.forEach(cat => {
+      const category = categoryMap.get(cat.id);
+      
+      if (cat.parentId && categoryMap.has(cat.parentId)) {
+        // Alt kategori
+        const parent = categoryMap.get(cat.parentId);
+        parent.children.push(category);
+      } else {
+        // Kök kategori
+        rootCategories.push(category);
+      }
+    });
+
+    return rootCategories;
   }
 
-  // Fallback kategoriler (API çalışmazsa) - N11'in gerçek kategorilerini temsil eder
+  // Fallback kategoriler (API çalışmazsa) - Çiçeksepeti'nin gerçek kategorilerini temsil eder
   getFallbackCategories() {
     return [
       {
@@ -315,21 +328,20 @@ class N11APIClient {
   // Bağlantı testi
   async testConnection() {
     try {
-      const response = await this.makeRequest('GetCategoryList');
+      const response = await this.makeRequest('/categories?limit=1');
       return {
         success: true,
-        message: 'N11 bağlantısı başarılı',
+        message: 'Çiçeksepeti bağlantısı başarılı',
         data: response
       };
     } catch (error) {
       return {
         success: false,
-        message: `N11 bağlantı hatası: ${error.message}`,
+        message: `Çiçeksepeti bağlantı hatası: ${error.message}`,
         error: error.response?.data || error.message
       };
     }
   }
 }
 
-module.exports = N11APIClient; 
- 
+module.exports = CiceksepetiAPIClient; 

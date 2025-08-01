@@ -9,6 +9,9 @@ router.use(authenticateToken);
 // Get all products with enhanced filtering (Viewer+)
 router.get('/', requireViewer, productController.getAllProducts);
 
+// Get WooCommerce products (Viewer+)
+router.get('/woocommerce', requireViewer, productController.getWooCommerceProducts);
+
 // Get product statistics (Viewer+)
 router.get('/stats', requireViewer, productController.getProductStats);
 

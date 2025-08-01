@@ -1,4 +1,4 @@
-const { Product, Category, Brand } = require('../models');
+const { Product, Category, Brand, Customer } = require('../models');
 const logger = require('../utils/logger');
 const multer = require('multer');
 const xlsx = require('xlsx');
@@ -6,6 +6,7 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
 const { sendToMarketplaces } = require('../services/marketplaceSendService');
+const WooCommerceAPIClient = require('../services/WooCommerceAPIClient');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -758,6 +759,8 @@ const getProductStats = async (req, res) => {
     let wooCommerceProductCount = 0;
     if (req.user.woo_store_url && req.user.woo_consumer_key && req.user.woo_consumer_secret) {
       try {
+        logger.info(`🔗 WooCommerce API Client oluşturuluyor - Store URL: ${req.user.woo_store_url}`);
+        
         const apiClient = new WooCommerceAPIClient(
           req.user.woo_store_url,
           req.user.woo_consumer_key,
@@ -765,7 +768,9 @@ const getProductStats = async (req, res) => {
         );
         
         // Get total product count from WooCommerce
+        logger.info('📦 WooCommerce\'dan ürün sayısı alınıyor...');
         const products = await apiClient.getProducts(1, 1, 'publish');
+        
         if (products && Array.isArray(products)) {
           // WooCommerce API doesn't return total count directly, so we need to count all products
           let page = 1;
@@ -776,6 +781,7 @@ const getProductStats = async (req, res) => {
             const pageProducts = await apiClient.getProducts(page, 100, 'publish');
             if (pageProducts && pageProducts.length > 0) {
               totalWooProducts += pageProducts.length;
+              logger.info(`📄 Sayfa ${page}: ${pageProducts.length} ürün sayıldı`);
               page++;
             } else {
               hasMoreProducts = false;
@@ -783,15 +789,29 @@ const getProductStats = async (req, res) => {
           }
           
           wooCommerceProductCount = totalWooProducts;
+          logger.info(`✅ WooCommerce ürün sayısı alındı: ${wooCommerceProductCount}`);
         }
       } catch (wooError) {
-        logger.warn('WooCommerce product count fetch failed:', wooError.message);
+        logger.warn('⚠️ WooCommerce ürün sayısı alınamadı:', wooError.message);
+        logger.warn('⚠️ WooCommerce bağlantı bilgileri:', {
+          store_url: req.user.woo_store_url,
+          has_consumer_key: !!req.user.woo_consumer_key,
+          has_consumer_secret: !!req.user.woo_consumer_secret
+        });
         // Continue without WooCommerce count
       }
+    } else {
+      logger.info('ℹ️ WooCommerce bağlantı bilgileri eksik, sadece veritabanı sayısı kullanılacak');
     }
 
     // Use the higher count between database and WooCommerce
     const finalTotalProducts = Math.max(totalProducts, wooCommerceProductCount);
+
+    logger.info(`📊 İstatistik sonuçları:`, {
+      databaseCount: totalProducts,
+      wooCommerceCount: wooCommerceProductCount,
+      finalTotal: finalTotalProducts
+    });
 
     res.status(200).json({
       success: true,
@@ -892,6 +912,56 @@ async function sendProductToMarketplaces(req, res) {
   }
 }
 
+// WooCommerce ürünlerini getir
+const getWooCommerceProducts = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    
+    // Müşteri bilgilerini al
+    const customer = await Customer.findByPk(customerId);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Müşteri bulunamadı'
+      });
+    }
+
+    // WooCommerce bağlantı bilgilerini kontrol et
+    if (!customer.woo_store_url || !customer.woo_consumer_key || !customer.woo_consumer_secret) {
+      return res.status(400).json({
+        success: false,
+        message: 'WooCommerce bağlantı bilgileri eksik'
+      });
+    }
+
+    // WooCommerce API client'ını oluştur
+    const wooCommerceClient = new WooCommerceAPIClient(
+      customer.woo_store_url,
+      customer.woo_consumer_key,
+      customer.woo_consumer_secret
+    );
+
+    // WooCommerce'dan ürünleri çek
+    const products = await wooCommerceClient.getProducts();
+    
+    logger.info(`WooCommerce'dan ${products.length} ürün çekildi`);
+
+    res.json({
+      success: true,
+      products: products,
+      count: products.length
+    });
+
+  } catch (error) {
+    logger.error('WooCommerce ürünleri getirme hatası:', error);
+    res.status(500).json({
+      success: false,
+      message: 'WooCommerce ürünleri alınırken hata oluştu',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createProduct,
   bulkUploadProducts,
@@ -901,5 +971,6 @@ module.exports = {
   deleteProduct,
   getProductStats,
   sendProductToMarketplaces,
-  upload
+  upload,
+  getWooCommerceProducts
 };

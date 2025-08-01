@@ -4,7 +4,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import AddNewProduct from './components/AddNewProduct';
-import CategoryMapping from './components/CategoryMapping';
+import CategoryMappingNew from './components/CategoryMappingNew';
 import ProductSync from './components/ProductSync';
 import StockPriceUpdate from './components/StockPriceUpdate';
 import OrderManagement from './components/OrderManagement';
@@ -21,17 +21,34 @@ import PaymentSuccess from './components/PaymentSuccess';
 import PaymentCancel from './components/PaymentCancel';
 import TenantLogin from './components/TenantLogin';
 import TenantDashboard from './components/TenantDashboard';
+import DashboardLayout from './components/DashboardLayout';
+import BulkUpload from './components/BulkUpload';
+import ProductSend from './components/ProductSend';
+import Settings from './components/Settings';
+import VariantManagement from './components/VariantManagement';
+import ProductMapping from './components/ProductMapping';
+import PriceUpdate from './components/PriceUpdate';
+import StockUpdate from './components/StockUpdate';
+import ReturnsCancellations from './components/ReturnsCancellations';
+import OrderLogs from './components/OrderLogs';
+import ActivityLogs from './components/ActivityLogs';
+import PullTrendyolProducts from './components/PullTrendyolProducts';
 import { Toaster } from 'react-hot-toast';
+import { ProductProvider } from './contexts/ProductContext';
 
 // Protected Route Component
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('token');
   
+  console.log('🔒 PrivateRoute check - Token:', token ? 'exists' : 'missing');
+  
   if (!token) {
+    console.log('🚫 No token found, redirecting to login');
     return <Navigate to="/login" replace />;
   }
   
-  return <>{children}</>;
+  console.log('✅ Token found, rendering protected content');
+  return <DashboardLayout>{children}</DashboardLayout>;
 };
 
 // Tenant Protected Route Component
@@ -50,7 +67,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('token');
   
   if (token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   
   return <>{children}</>;
@@ -69,8 +86,9 @@ const TenantPublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }
 
 function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-gray-100">
+    <ProductProvider>
+      <Router>
+        <div className="min-h-screen bg-gray-100">
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={
@@ -89,8 +107,8 @@ function App() {
             </TenantPublicRoute>
           } />
           
-          {/* Admin Protected Routes */}
-          <Route path="/" element={
+          {/* Admin Protected Routes with Dashboard Layout */}
+          <Route path="/dashboard" element={
             <PrivateRoute>
               <Dashboard />
             </PrivateRoute>
@@ -117,7 +135,7 @@ function App() {
           } />
           <Route path="/category-mapping" element={
             <PrivateRoute>
-              <CategoryMapping />
+              <CategoryMappingNew />
             </PrivateRoute>
           } />
           <Route path="/product-sync" element={
@@ -175,6 +193,61 @@ function App() {
               <WooProductList />
             </PrivateRoute>
           } />
+          <Route path="/bulk-upload" element={
+            <PrivateRoute>
+              <BulkUpload />
+            </PrivateRoute>
+          } />
+          <Route path="/product-send" element={
+            <PrivateRoute>
+              <ProductSend />
+            </PrivateRoute>
+          } />
+          <Route path="/settings" element={
+            <PrivateRoute>
+              <Settings />
+            </PrivateRoute>
+          } />
+          <Route path="/variant-management" element={
+            <PrivateRoute>
+              <VariantManagement />
+            </PrivateRoute>
+          } />
+          <Route path="/product-mapping" element={
+            <PrivateRoute>
+              <ProductMapping />
+            </PrivateRoute>
+          } />
+          <Route path="/price-update" element={
+            <PrivateRoute>
+              <PriceUpdate />
+            </PrivateRoute>
+          } />
+          <Route path="/stock-update" element={
+            <PrivateRoute>
+              <StockUpdate />
+            </PrivateRoute>
+          } />
+          <Route path="/returns-cancellations" element={
+            <PrivateRoute>
+              <ReturnsCancellations />
+            </PrivateRoute>
+          } />
+          <Route path="/order-logs" element={
+            <PrivateRoute>
+              <OrderLogs />
+            </PrivateRoute>
+          } />
+          <Route path="/activity-logs" element={
+            <PrivateRoute>
+              <ActivityLogs />
+            </PrivateRoute>
+          } />
+          <Route path="/pull-trendyol" element={
+            <PrivateRoute>
+              <PullTrendyolProducts />
+            </PrivateRoute>
+          } />
           
           {/* Tenant Protected Routes */}
           <Route path="/tenant-dashboard" element={
@@ -184,11 +257,13 @@ function App() {
           } />
           
           {/* Default redirect */}
-          <Route path="*" element={<Navigate to="/tenant-login" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         <Toaster position="top-right" />
       </div>
     </Router>
+    </ProductProvider>
   );
 }
 
