@@ -7,6 +7,8 @@ const { DataTypes } = require("sequelize");
 
 // ---- Model ----
 const MarketplaceConnection = sequelize.define("MarketplaceConnection", {
+  tenant_id:   { type: DataTypes.INTEGER, allowNull: false },
+  customer_id: { type: DataTypes.INTEGER, allowNull: false },
   marketplace: { type: DataTypes.STRING, allowNull: false }, // "trendyol"
   supplier_id: { type: DataTypes.STRING, allowNull: true },
   app_key:     { type: DataTypes.STRING, allowNull: true },
@@ -14,7 +16,10 @@ const MarketplaceConnection = sequelize.define("MarketplaceConnection", {
 }, {
   tableName: "marketplace_connections",
   timestamps: true,
-  indexes: [{ unique: true, fields: ["marketplace"] }]
+  indexes: [
+    { unique: true, fields: ["tenant_id", "customer_id", "marketplace"] },
+    { fields: ["tenant_id", "customer_id"] }
+  ]
 });
 
 // ---- Helpers ----
@@ -28,6 +33,8 @@ router.post("/marketplaces/save-connection", async (req, res) => {
   try {
     const body = req.body || {};
     const marketplace = (body.marketplace || "").toString().toLowerCase();
+    const tenant_id = Number(body.tenant_id || body.tenantId || 1);
+    const customer_id = Number(body.customer_id || body.customerId || 1);
     
     // Frontend connectionData wrapper'ını destekle
     const connectionData = body.connectionData || {};
@@ -56,6 +63,8 @@ router.post("/marketplaces/save-connection", async (req, res) => {
     await MarketplaceConnection.sync(); // garanti olsun
 
     await MarketplaceConnection.upsert({
+      tenant_id,
+      customer_id,
       marketplace,
       supplier_id,
       app_key,
@@ -73,11 +82,16 @@ router.post("/marketplaces/save-connection", async (req, res) => {
 router.get("/marketplaces/connection", async (req, res) => {
   try {
     const marketplace = (req.query.marketplace || "").toString().toLowerCase();
+    const tenant_id = Number(req.query.tenant_id || req.query.tenantId || 1);
+    const customer_id = Number(req.query.customer_id || req.query.customerId || 1);
+    
     if (!marketplace) {
       return res.status(400).json({ success: false, message: "marketplace zorunludur" });
     }
     await MarketplaceConnection.sync();
-    const row = await MarketplaceConnection.findOne({ where: { marketplace } });
+    const row = await MarketplaceConnection.findOne({ 
+      where: { tenant_id, customer_id, marketplace } 
+    });
     if (!row) return res.json({ success: true, data: null });
 
     // app_key/app_secret maskelenmiş dön
@@ -95,6 +109,37 @@ router.get("/marketplaces/connection", async (req, res) => {
   } catch (e) {
     console.error("get-connection hata:", e?.message);
     return res.status(500).json({ success: false, message: "Sorgu sırasında hata" });
+  }
+});
+
+// ---- GET /api/marketplaces/connections ----
+router.get("/marketplaces/connections", async (req, res) => {
+  try {
+    const tenant_id = Number(req.query.tenant_id || req.query.tenantId || 1);
+    const customer_id = Number(req.query.customer_id || req.query.customerId || 1);
+    
+    await MarketplaceConnection.sync();
+    const items = await MarketplaceConnection.findAll({ 
+      where: { tenant_id, customer_id },
+      order: [['updatedAt', 'DESC']]
+    });
+    
+    // app_key/app_secret maskelenmiş dön
+    const masked = (s) => (s ? s.slice(0, 3) + "***" + s.slice(-2) : null);
+    const maskedItems = items.map(item => ({
+      id: item.id,
+      marketplace: item.marketplace,
+      supplier_id: item.supplier_id,
+      app_key: masked(item.app_key),
+      app_secret: masked(item.app_secret),
+      created_at: item.createdAt,
+      updated_at: item.updatedAt
+    }));
+    
+    return res.json({ success: true, data: maskedItems });
+  } catch (e) {
+    console.error("get-connections hata:", e?.message);
+    return res.status(500).json({ success: false, message: "Bağlantılar alınırken hata" });
   }
 });
 
