@@ -53,3 +53,4 @@ router.get('/users/:tenant_id?', authenticateToken, requireAdmin, authController
 router.put('/users/:user_id/role', authenticateToken, requireAdmin, authController.updateUserRole);
 
 module.exports = router; 
+

@@ -3,7 +3,7 @@ const TrendyolSync = require('../services/TrendyolSync');
 const HepsiburadaSync = require('../services/HepsiburadaSync');
 const N11Sync = require('../services/N11Sync');
 const WooCommerceSync = require('../services/WooCommerceSync');
-const { MarketplaceConnection } = require('../models');
+const MarketplaceConnection = require('../models/MarketplaceConnection');
 
 /**
  * Marketplace Sync Controller

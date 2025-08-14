@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+const { sequelize } = require('../config/database');
 
 const ProductSyncMap = sequelize.define('ProductSyncMap', {
   id: {
@@ -47,6 +47,38 @@ const ProductSyncMap = sequelize.define('ProductSyncMap', {
   error_message: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  trendyol_category_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Trendyol kategori ID\'si'
+  },
+  supplier_address_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Tedarikçi adres ID\'si'
+  },
+  shipping_provider_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Kargo firması ID\'si'
+  },
+  fixed_price_increase: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    defaultValue: 0,
+    comment: 'Sabit fiyat artırımı (TL)'
+  },
+  percentage_price_increase: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    defaultValue: 0,
+    comment: 'Yüzdelik fiyat artırımı (%)'
+  },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'Eşleştirme aktif mi?'
   }
 }, {
   tableName: 'product_sync_map',

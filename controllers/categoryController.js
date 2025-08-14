@@ -1,4 +1,4 @@
-const { Category } = require('../models');
+const Category = require('../models/Category');
 const logger = require('../utils/logger');
 
 /**
@@ -201,7 +201,7 @@ const deleteCategory = async (req, res) => {
     }
 
     // Check if category is being used by any products
-    const { Product } = require('../models');
+    const Product = require('../models/Product');
     const productsUsingCategory = await Product.count({
       where: { category_id: id }
     });

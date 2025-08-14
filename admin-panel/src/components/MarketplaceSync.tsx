@@ -67,7 +67,7 @@ const MarketplaceSync: React.FC = () => {
   // Desteklenen pazaryerlerini getir
   const fetchMarketplaces = async () => {
     try {
-      const response = await api.get('/api/marketplace-sync/marketplaces');
+              const response = await api.get('/marketplace-sync/marketplaces');
       setMarketplaces(response.data.data);
     } catch (error) {
       console.error('Error fetching marketplaces:', error);
@@ -78,7 +78,7 @@ const MarketplaceSync: React.FC = () => {
   // Tüm pazaryerlerinin durumunu getir
   const fetchAllStatus = async () => {
     try {
-      const response = await api.get('/api/marketplace-sync/status');
+              const response = await api.get('/marketplace-sync/status');
       setAllStatus(response.data.data);
     } catch (error) {
       console.error('Error fetching all status:', error);

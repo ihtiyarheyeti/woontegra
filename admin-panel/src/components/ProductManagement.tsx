@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import ProductMarketplaceSettingsModal from './ProductMarketplaceSettingsModal';
 
 interface Product {
   id: number;
@@ -72,6 +73,10 @@ const ProductManagement: React.FC = () => {
     status: '',
     category_id: ''
   });
+
+  // Modal state'leri
+  const [marketplaceModalOpen, setMarketplaceModalOpen] = useState(false);
+  const [selectedProductForModal, setSelectedProductForModal] = useState<Product | null>(null);
 
   useEffect(() => {
     fetchProducts();
@@ -192,6 +197,17 @@ const ProductManagement: React.FC = () => {
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  // Modal fonksiyonları
+  const handleMarketplaceSettings = (product: Product) => {
+    setSelectedProductForModal(product);
+    setMarketplaceModalOpen(true);
+  };
+
+  const handleCloseMarketplaceModal = () => {
+    setMarketplaceModalOpen(false);
+    setSelectedProductForModal(null);
   };
 
   const getStatusColor = (status: string) => {
@@ -424,6 +440,9 @@ const ProductManagement: React.FC = () => {
                   Stok
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Pazaryeri
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Durum
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -452,6 +471,17 @@ const ProductManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {product.stock}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => handleMarketplaceSettings(product)}
+                      className="flex items-center justify-center w-8 h-8 rounded-lg border-2 border-orange-500 bg-white hover:scale-105 hover:shadow-md hover:bg-orange-50 transition-all duration-200"
+                      title="Trendyol Ayarları Düzenle"
+                    >
+                      <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                      </svg>
+                    </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(product.status)}`}>
@@ -532,6 +562,13 @@ const ProductManagement: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ProductMarketplaceSettingsModal */}
+      <ProductMarketplaceSettingsModal
+        isOpen={marketplaceModalOpen}
+        onClose={handleCloseMarketplaceModal}
+        product={selectedProductForModal}
+      />
     </div>
   );
 };

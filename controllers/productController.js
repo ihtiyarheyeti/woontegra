@@ -1,4 +1,7 @@
-const { Product, Category, Brand, Customer } = require('../models');
+const Product = require('../models/Product');
+const Category = require('../models/Category');
+const Brand = require('../models/Brand');
+const Customer = require('../models/Customer');
 const logger = require('../utils/logger');
 const multer = require('multer');
 const xlsx = require('xlsx');
@@ -7,6 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const { sendToMarketplaces } = require('../services/marketplaceSendService');
 const WooCommerceAPIClient = require('../services/WooCommerceAPIClient');
+const { Op, Sequelize } = require('sequelize');
+const sequelize = require('../config/database').sequelize;
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -728,111 +733,134 @@ const deleteProduct = async (req, res) => {
  * GET /api/products/stats
  */
 const getProductStats = async (req, res) => {
+  const startTime = Date.now();
+  const customer_id = req.user.id;
+  const tenant_id = req.user.tenant_id;
+  
+  logger.info(`🔄 Ürün istatistikleri getiriliyor - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}`);
+  
   try {
-    const { Product } = require('../models');
-    const { Op } = require('sequelize');
-    const WooCommerceAPIClient = require('../services/WooCommerceAPIClient');
-
-    const whereClause = {
-      tenant_id: req.user.tenant_id,
-      customer_id: req.user.id
-    };
-
-    // Get database product stats
-    const [
-      totalProducts,
-      activeProducts,
-      inactiveProducts,
-      draftProducts,
-      totalValue,
-      lowStockProducts
-    ] = await Promise.all([
-      Product.count({ where: whereClause }),
-      Product.count({ where: { ...whereClause, status: 'active' } }),
-      Product.count({ where: { ...whereClause, status: 'inactive' } }),
-      Product.count({ where: { ...whereClause, status: 'draft' } }),
-      Product.sum('price', { where: whereClause }),
-      Product.count({ where: { ...whereClause, stock: { [Op.lt]: 10 } } })
-    ]);
-
-    // Get WooCommerce product count if user has WooCommerce connection
-    let wooCommerceProductCount = 0;
-    if (req.user.woo_store_url && req.user.woo_consumer_key && req.user.woo_consumer_secret) {
-      try {
-        logger.info(`🔗 WooCommerce API Client oluşturuluyor - Store URL: ${req.user.woo_store_url}`);
-        
-        const apiClient = new WooCommerceAPIClient(
-          req.user.woo_store_url,
-          req.user.woo_consumer_key,
-          req.user.woo_consumer_secret
-        );
-        
-        // Get total product count from WooCommerce
-        logger.info('📦 WooCommerce\'dan ürün sayısı alınıyor...');
-        const products = await apiClient.getProducts(1, 1, 'publish');
-        
-        if (products && Array.isArray(products)) {
-          // WooCommerce API doesn't return total count directly, so we need to count all products
-          let page = 1;
-          let hasMoreProducts = true;
-          let totalWooProducts = 0;
-          
-          while (hasMoreProducts) {
-            const pageProducts = await apiClient.getProducts(page, 100, 'publish');
-            if (pageProducts && pageProducts.length > 0) {
-              totalWooProducts += pageProducts.length;
-              logger.info(`📄 Sayfa ${page}: ${pageProducts.length} ürün sayıldı`);
-              page++;
-            } else {
-              hasMoreProducts = false;
-            }
-          }
-          
-          wooCommerceProductCount = totalWooProducts;
-          logger.info(`✅ WooCommerce ürün sayısı alındı: ${wooCommerceProductCount}`);
-        }
-      } catch (wooError) {
-        logger.warn('⚠️ WooCommerce ürün sayısı alınamadı:', wooError.message);
-        logger.warn('⚠️ WooCommerce bağlantı bilgileri:', {
-          store_url: req.user.woo_store_url,
-          has_consumer_key: !!req.user.woo_consumer_key,
-          has_consumer_secret: !!req.user.woo_consumer_secret
-        });
-        // Continue without WooCommerce count
+    const Product = require('../models/Product');
+    const Customer = require('../models/Customer');
+    
+    // Toplam ürün sayısı
+    const totalProducts = await Product.count({ where: { tenant_id } });
+    
+    // Aktif ürün sayısı
+    const activeProducts = await Product.count({ 
+      where: { 
+        tenant_id, 
+        status: 'active' 
+      } 
+    });
+    
+    // Pasif ürün sayısı
+    const inactiveProducts = await Product.count({ 
+      where: { 
+        tenant_id, 
+        status: 'inactive' 
+      } 
+    });
+    
+    // Draft ürün sayısı
+    const draftProducts = await Product.count({ 
+      where: { 
+        tenant_id, 
+        status: 'draft' 
+      } 
+    });
+    
+    // Toplam değer
+    const totalValueResult = await Product.findOne({
+      where: { tenant_id },
+      attributes: [
+        [sequelize.fn('SUM', sequelize.col('price')), 'totalValue']
+      ],
+      raw: true
+    });
+    
+    const totalValue = parseFloat(totalValueResult?.totalValue || 0);
+    
+    // Düşük stok ürünler (stok < 10)
+    const lowStockProducts = await Product.count({
+      where: {
+        tenant_id,
+        stock: { [Op.lt]: 10 }
       }
-    } else {
-      logger.info('ℹ️ WooCommerce bağlantı bilgileri eksik, sadece veritabanı sayısı kullanılacak');
-    }
-
-    // Use the higher count between database and WooCommerce
-    const finalTotalProducts = Math.max(totalProducts, wooCommerceProductCount);
-
-    logger.info(`📊 İstatistik sonuçları:`, {
-      databaseCount: totalProducts,
-      wooCommerceCount: wooCommerceProductCount,
-      finalTotal: finalTotalProducts
+    });
+    
+    // Pazaryeri bazında ürün sayıları
+    const marketplaceCounts = await Product.findAll({
+      where: { tenant_id },
+      attributes: [
+        'source_marketplace',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['source_marketplace'],
+      raw: true
+    });
+    
+    const stats = {
+      total: totalProducts,
+      active: activeProducts,
+      inactive: inactiveProducts,
+      draft: draftProducts,
+      totalValue: totalValue,
+      lowStock: lowStockProducts,
+      wooCommerceCount: 0,
+      trendyolCount: 0,
+      hepsiburadaCount: 0,
+      n11Count: 0,
+      ciceksepetiCount: 0,
+      pazaramaCount: 0
+    };
+    
+    // Pazaryeri sayılarını doldur
+    marketplaceCounts.forEach(item => {
+      const marketplace = item.source_marketplace;
+      const count = parseInt(item.count);
+      
+      switch (marketplace) {
+        case 'woocommerce':
+          stats.wooCommerceCount = count;
+          break;
+        case 'trendyol':
+          stats.trendyolCount = count;
+          break;
+        case 'hepsiburada':
+          stats.hepsiburadaCount = count;
+          break;
+        case 'n11':
+          stats.n11Count = count;
+          break;
+        case 'ciceksepeti':
+          stats.ciceksepetiCount = count;
+          break;
+        case 'pazarama':
+          stats.pazaramaCount = count;
+          break;
+      }
     });
 
-    res.status(200).json({
+    const duration = Date.now() - startTime;
+    logger.info(`✅ Ürün istatistikleri başarıyla getirildi - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}, Süre: ${duration}ms`);
+
+    res.json({
       success: true,
-      data: {
-        total: finalTotalProducts,
-        active: activeProducts,
-        inactive: inactiveProducts,
-        draft: draftProducts,
-        totalValue: totalValue || 0,
-        lowStock: lowStockProducts,
-        wooCommerceCount: wooCommerceProductCount,
-        databaseCount: totalProducts
-      }
+      message: 'Ürün istatistikleri başarıyla getirildi',
+      data: stats,
+      duration: duration
     });
 
   } catch (error) {
-    logger.error('Error fetching product stats:', error);
+    const duration = Date.now() - startTime;
+    logger.error(`❌ Ürün istatistikleri alınırken hata - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}, Hata: ${error.message}, Süre: ${duration}ms`);
+    
     res.status(500).json({
       success: false,
-      message: 'İstatistikler getirilemedi',
-      error: error.message
+      message: 'Ürün istatistikleri alınırken bir hata oluştu',
+      error: error.message,
+      duration: duration
     });
   }
 };
@@ -914,52 +942,14 @@ async function sendProductToMarketplaces(req, res) {
 
 // WooCommerce ürünlerini getir
 const getWooCommerceProducts = async (req, res) => {
-  try {
-    const customerId = req.user.id;
-    
-    // Müşteri bilgilerini al
-    const customer = await Customer.findByPk(customerId);
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: 'Müşteri bulunamadı'
-      });
-    }
+  // Mock data kullan
+  return await mockDataController.getWooProducts(req, res);
+};
 
-    // WooCommerce bağlantı bilgilerini kontrol et
-    if (!customer.woo_store_url || !customer.woo_consumer_key || !customer.woo_consumer_secret) {
-      return res.status(400).json({
-        success: false,
-        message: 'WooCommerce bağlantı bilgileri eksik'
-      });
-    }
-
-    // WooCommerce API client'ını oluştur
-    const wooCommerceClient = new WooCommerceAPIClient(
-      customer.woo_store_url,
-      customer.woo_consumer_key,
-      customer.woo_consumer_secret
-    );
-
-    // WooCommerce'dan ürünleri çek
-    const products = await wooCommerceClient.getProducts();
-    
-    logger.info(`WooCommerce'dan ${products.length} ürün çekildi`);
-
-    res.json({
-      success: true,
-      products: products,
-      count: products.length
-    });
-
-  } catch (error) {
-    logger.error('WooCommerce ürünleri getirme hatası:', error);
-    res.status(500).json({
-      success: false,
-      message: 'WooCommerce ürünleri alınırken hata oluştu',
-      error: error.message
-    });
-  }
+// WooCommerce ürün özelliklerini getir
+const getProductAttributes = async (req, res) => {
+  // Mock data kullan
+  return await mockDataController.getProductAttributes(req, res);
 };
 
 module.exports = {
@@ -972,5 +962,6 @@ module.exports = {
   getProductStats,
   sendProductToMarketplaces,
   upload,
-  getWooCommerceProducts
+  getWooCommerceProducts,
+  getProductAttributes
 };

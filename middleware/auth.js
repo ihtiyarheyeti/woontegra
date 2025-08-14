@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
-const { Customer, Tenant } = require('../models');
+const Customer = require('../models/Customer');
+const Tenant = require('../models/Tenant');
 const logger = require('../utils/logger');
 
 /**
@@ -8,6 +9,14 @@ const logger = require('../utils/logger');
  */
 const authenticateToken = async (req, res, next) => {
   try {
+    // Public route bypass
+    const publicList = String(process.env.PUBLIC_ROUTES || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (publicList.some(p => req.path.startsWith(p))) return next();
+    if (process.env.AUTH_REQUIRED === 'false') return next();
+
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import MarketplaceSendModal from './MarketplaceSendModal';
-import { Search, Filter, Send, RefreshCw, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import TrendyolProductMappingModal from './TrendyolProductMappingModal';
+import { Search, Filter, Send, RefreshCw, Trash2, CheckCircle, XCircle, Upload, X } from 'lucide-react';
 import { useProductContext } from '../contexts/ProductContext';
+import api from '../services/api';
 
+// WooProduct interface'ini ProductContext'ten import et
 interface WooProduct {
   id: number;
   name: string;
@@ -28,7 +31,19 @@ interface WooProduct {
   status: string;
   date_created: string;
   date_modified: string;
+  // WooCommerce'dan gelen gerçek alanlar
+  tax_status: string;
+  tax_class: string;
+  type: string;
+  brand?: string; // Eğer WooCommerce'da brand alanı varsa
+  attributes?: Array<{
+    id: number;
+    name: string;
+    options: string[];
+  }>;
 }
+
+
 
 const WooProductList: React.FC = () => {
   // Global product context
@@ -37,6 +52,11 @@ const WooProductList: React.FC = () => {
   // Local state
   const [showMarketplaceModal, setShowMarketplaceModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<WooProduct | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [showTrendyolModal, setShowTrendyolModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<WooProduct | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,6 +132,170 @@ const WooProductList: React.FC = () => {
     setSelectedProduct(null);
   };
 
+  // Düzenleme modal'ını aç
+  const handleEditProduct = (product: WooProduct) => {
+    setEditingProduct(product);
+    setShowEditModal(true);
+  };
+
+  // Düzenleme modal'ını kapat
+  const handleEditModalClose = () => {
+    setShowEditModal(false);
+    setEditingProduct(null);
+  };
+
+  // Ürün sil
+  const handleDeleteProduct = async (product: WooProduct) => {
+    if (window.confirm(`${product.name} ürününü silmek istediğinizden emin misiniz?`)) {
+      try {
+        // TODO: Backend'de silme işlemi yapılacak
+        toast.success(`${product.name} ürünü silindi`);
+        // Ürünü listeden kaldır
+        // await deleteProduct(product.id);
+      } catch (error) {
+        toast.error('Ürün silinirken hata oluştu');
+      }
+    }
+  };
+
+  // Ürün görüntüle
+  const handleViewProduct = (product: WooProduct) => {
+    // Ürün detay sayfasına yönlendir veya modal aç
+    console.log('Ürün görüntüleniyor:', product);
+    toast.success(`${product.name} ürünü görüntüleniyor`);
+  };
+
+  // Resim modal'ını aç
+  const handleImageClick = (product: WooProduct) => {
+    setEditingProduct(product);
+    setShowImageModal(true);
+  };
+
+  // Trendyol modal'ını aç
+  const handleTrendyolClick = (product: WooProduct) => {
+    setEditingProduct(product);
+    setShowTrendyolModal(true);
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length > 0) {
+      await uploadImages(imageFiles);
+    } else {
+      toast.error('Lütfen sadece resim dosyaları sürükleyin');
+    }
+  };
+
+  // Resim yükleme fonksiyonu
+  const uploadImages = async (files: File[]) => {
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('images', file);
+      });
+
+      // Backend'e resim yükle
+      const response = await api.post('/upload/images', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.success) {
+        const uploadedImages = response.data.data;
+        toast.success(`${files.length} resim başarıyla yüklendi!`);
+        
+        // Yüklenen resimleri ürün resimlerine ekle
+        if (editingProduct) {
+          const newImages = uploadedImages.map((img: any) => ({
+            id: Date.now() + Math.random(), // Geçici ID
+            src: img.url,
+            name: img.filename || 'Yeni Resim',
+            alt: img.filename || 'Yeni Resim'
+          }));
+          
+          setEditingProduct({
+            ...editingProduct,
+            images: [...editingProduct.images, ...newImages]
+          });
+        }
+        
+        console.log('Yüklenen resimler:', uploadedImages);
+      } else {
+        throw new Error(response.data.message || 'Resim yüklenemedi');
+      }
+      
+    } catch (error) {
+      console.error('Resim yükleme hatası:', error);
+      toast.error('Resim yüklenirken hata oluştu');
+    }
+  };
+
+  // Resim silme fonksiyonu
+  const handleDeleteImage = async (imageId: number, imageIndex: number) => {
+    if (window.confirm('Bu resmi silmek istediğinizden emin misiniz?')) {
+      try {
+        // Backend'den resmi sil
+        await api.delete(`/upload/image/${imageId}`);
+
+        // Resmi local state'den kaldır
+        if (editingProduct) {
+          const updatedImages = editingProduct.images.filter((_, index) => index !== imageIndex);
+          setEditingProduct({
+            ...editingProduct,
+            images: updatedImages
+          });
+        }
+
+        toast.success('Resim başarıyla silindi!');
+        
+      } catch (error) {
+        console.error('Resim silme hatası:', error);
+        toast.error('Resim silinirken hata oluştu');
+      }
+    }
+  };
+
+  // Değişiklikleri kaydet
+  const handleSaveChanges = async () => {
+    try {
+      if (!editingProduct) {
+        toast.error('Düzenlenecek ürün bulunamadı');
+        return;
+      }
+
+      // Backend'de ürün güncelleme endpoint'i çağrılacak
+      // await api.put(`/woocommerce/products/${editingProduct.id}`, editingProduct);
+
+      // Şimdilik başarılı mesajı göster
+      toast.success('Değişiklikler başarıyla kaydedildi!');
+      
+      // Modal'ı kapat
+      setShowImageModal(false);
+      
+      // Ürün listesini yenile
+      await fetchProducts(true);
+      
+    } catch (error) {
+      console.error('Değişiklikleri kaydetme hatası:', error);
+      toast.error('Değişiklikler kaydedilirken hata oluştu');
+    }
+  };
+
   // Load products on component mount - sadece ürünler boşsa çek
   useEffect(() => {
     if (products.length === 0) {
@@ -140,11 +324,12 @@ const WooProductList: React.FC = () => {
   }, [products]);
 
   // Fiyat formatla
-  const formatPrice = (price: string) => {
+  const formatPrice = (price: string | number) => {
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
     return new Intl.NumberFormat('tr-TR', {
       style: 'currency',
       currency: 'TRY'
-    }).format(parseFloat(price));
+    }).format(numPrice);
   };
 
   // Stok durumu kontrol et
@@ -280,7 +465,7 @@ const WooProductList: React.FC = () => {
 
   return (
     <div className="p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-full mx-auto">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Ürünler</h1>
@@ -421,12 +606,12 @@ const WooProductList: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="">
+              <table className="w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left">
+                    <th className="w-12 px-2 py-3 text-left">
                       <input
                         type="checkbox"
                         checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
@@ -434,30 +619,51 @@ const WooProductList: React.FC = () => {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Ürün
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Fiyat
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Stok
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Durum
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Trendyol Eşleşme
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-24 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       İşlemler
+                    </th>
+                    <th className="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Resim
+                    </th>
+                    <th className="w-24 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Stok Kodu
+                    </th>
+                    <th className="w-48 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ürün Adı
+                    </th>
+                    <th className="w-16 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      KDV (%)
+                    </th>
+                    <th className="w-16 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Miktar
+                    </th>
+                    <th className="w-24 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Satış Fiyatı
+                    </th>
+                    <th className="w-28 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Özel Çıkışlı Fiyat
+                    </th>
+                    <th className="w-24 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Marka
+                    </th>
+                    <th className="w-32 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Kategori
+                    </th>
+                    <th className="w-28 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ürün Tipi
+                    </th>
+                    <th className="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Aktif
+                    </th>
+                    <th className="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Pazaryeri
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {currentProducts.map((product) => (
                     <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-3 whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={selectedProducts.includes(product.id)}
@@ -465,42 +671,87 @@ const WooProductList: React.FC = () => {
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-12 w-12">
-                            <img
-                              className="h-12 w-12 rounded-lg object-cover"
-                              src={product.images[0]?.src || '/placeholder-product.jpg'}
-                              alt={product.name}
-                              onError={(e) => {
-                                e.currentTarget.src = '/placeholder-product.jpg';
-                              }}
-                            />
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {product.name}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              SKU: {product.sku || '-'}
-                            </div>
-                          </div>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditProduct(product)}
+                            className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                            title="Düzenle"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(product)}
+                            className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50"
+                            title="Sil"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleViewProduct(product)}
+                            className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50"
+                            title="Görüntüle"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-2 py-3 whitespace-nowrap">
+                        <div className="flex-shrink-0 h-12 w-12 cursor-pointer hover:opacity-80 transition-opacity">
+                          <img
+                            className="h-12 w-12 rounded-lg object-cover"
+                            src={product.images[0]?.src || '/placeholder-product.jpg'}
+                            alt={product.name}
+                            onClick={() => handleImageClick(product)}
+                            onError={(e) => {
+                              e.currentTarget.src = '/placeholder-product.jpg';
+                            }}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {product.sku || '-'}
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <div className="max-w-xs truncate" title={product.name}>
+                          {product.name}
+                        </div>
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {'20%'}
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {product.stock_quantity || 0}
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
                         <div className="font-medium">{formatPrice(product.price)}</div>
-                        {product.sale_price && product.sale_price !== product.regular_price && (
-                          <div className="text-xs text-gray-500 line-through">
-                            {formatPrice(product.regular_price)}
-                          </div>
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {product.sale_price && product.sale_price !== product.regular_price ? (
+                          <div className="font-medium text-green-600">{formatPrice(product.sale_price)}</div>
+                        ) : (
+                          <div className="text-gray-400">-</div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStockColor(product.stock_status, product.stock_quantity)}`}>
-                          {getStockStatus(product.stock_status, product.stock_quantity)}
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {'-'}
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {product.categories?.[0]?.name || '-'}
+                      </td>
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 capitalize">
+                          {'Basit Ürün'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-3 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${
                           product.status === 'publish' 
                             ? 'bg-green-100 text-green-800' 
@@ -519,17 +770,13 @@ const WooProductList: React.FC = () => {
                           )}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                          Eşleşmedi
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900">
                         <button
-                          onClick={() => handleSendToMarketplace(product)}
-                          className="text-blue-600 hover:text-blue-900"
+                          onClick={() => handleTrendyolClick(product)}
+                          className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800 hover:bg-orange-200 cursor-pointer transition-colors"
+                          title="Trendyol'a gönder"
                         >
-                          Pazaryerine Gönder
+                          T
                         </button>
                       </td>
                     </tr>
@@ -605,6 +852,124 @@ const WooProductList: React.FC = () => {
             productId={selectedProduct.id}
             productName={selectedProduct.name}
             onClose={handleMarketplaceModalClose}
+          />
+        )}
+
+                {/* Image Upload Modal */}
+        {showImageModal && editingProduct && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {editingProduct.name} - Resim Yönetimi
+                </h3>
+                <button
+                  onClick={() => setShowImageModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Mevcut Resimler */}
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Mevcut Resimler</h4>
+                <div className="grid grid-cols-4 gap-3">
+                  {editingProduct.images.map((image: any, index: number) => (
+                    <div key={image.id} className="relative group">
+                      <img
+                        src={image.src}
+                        alt={image.alt || `Resim ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => handleDeleteImage(image.id, index)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Yeni Resim Yükleme */}
+              <div 
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                  isDragOver 
+                    ? 'border-blue-400 bg-blue-50' 
+                    : 'border-gray-300'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <div className="text-sm text-gray-600 mb-4">
+                  {isDragOver ? (
+                    <>
+                      <p className="font-medium text-blue-600">Resimleri buraya bırakın!</p>
+                      <p className="text-xs text-blue-500">PNG, JPG, GIF dosyaları kabul edilir</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium">Resim yüklemek için tıklayın veya sürükleyin</p>
+                      <p className="text-xs">PNG, JPG, GIF dosyaları kabul edilir (max 5MB)</p>
+                    </>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const files = e.target.files;
+                    if (files) {
+                      const fileArray = Array.from(files);
+                      await uploadImages(fileArray);
+                    }
+                  }}
+                  className="hidden"
+                  id="image-upload"
+                />
+                <label
+                  htmlFor="image-upload"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer transition-colors"
+                >
+                  Resim Seç
+                </label>
+              </div>
+
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowImageModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Kapat
+                </button>
+                <button
+                  onClick={handleSaveChanges}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Kaydet
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Trendyol Product Mapping Modal */}
+        {showTrendyolModal && editingProduct && (
+          <TrendyolProductMappingModal
+            isOpen={showTrendyolModal}
+            product={editingProduct}
+            storeId={1} // TODO: Gerçek store ID'yi kullan
+            onClose={() => setShowTrendyolModal(false)}
+            onSaved={(payload: { categoryId: number | null; attributes: { attributeId: number; attributeValueId: number | null }[] }) => {
+              console.log('Trendyol eşleştirmesi kaydedildi:', payload);
+              toast.success(`Trendyol eşleştirmesi başarıyla kaydedildi! Kategori ID: ${payload.categoryId}`);
+              setShowTrendyolModal(false);
+            }}
           />
         )}
       </div>

@@ -106,7 +106,7 @@ const UserConnections: React.FC = () => {
   const fetchConnections = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/user-connections');
+              const response = await api.get('/user-connections');
       if (response.success) {
         setConnections(response.data);
       } else {
@@ -122,7 +122,7 @@ const UserConnections: React.FC = () => {
   // Fetch marketplace types
   const fetchMarketplaceTypes = async () => {
     try {
-      const response = await api.get('/api/user-connections/types/marketplaces');
+              const response = await api.get('/user-connections/types/marketplaces');
       if (response.success) {
         setMarketplaceTypes(response.data);
       }

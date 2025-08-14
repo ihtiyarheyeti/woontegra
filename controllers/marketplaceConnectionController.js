@@ -1,4 +1,5 @@
-const { MarketplaceConnection, Customer } = require('../models');
+const MarketplaceConnection = require('../models/MarketplaceConnection');
+const Customer = require('../models/Customer');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 

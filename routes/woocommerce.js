@@ -15,4 +15,7 @@ router.post('/sync', authenticateToken, woocommerceController.syncProducts);
 // WooCommerce bağlantısını test et
 router.get('/test-connection', authenticateToken, woocommerceController.testConnection);
 
+// WooCommerce ürün özelliklerini getir
+router.get('/product-attributes', authenticateToken, woocommerceController.getProductAttributes);
+
 module.exports = router; 

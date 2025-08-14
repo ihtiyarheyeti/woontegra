@@ -1,5 +1,5 @@
-const { DataTypes, Op } = require('sequelize');
-const { sequelize } = require('../config/database');
+const { DataTypes, Op, Sequelize } = require('sequelize');
+const sequelize = require('../config/database').sequelize;
 
 /**
  * Product Model

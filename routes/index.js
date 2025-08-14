@@ -14,6 +14,9 @@ const marketplaceRoutes = require('./marketplaces');
 const orderRoutes = require('./orders');
 const categoryMappingRoutes = require('./categoryMappings');
 const trendyolRoutes = require('./trendyolSync');
+const mockDataRoutes = require('./mockDataRoutes');
+const mappingRoutes = require('./mappings');
+const uploadRoutes = require('./upload');
 
 // Mount routes
 router.use('/api/auth', authRoutes);
@@ -28,5 +31,8 @@ router.use('/api/marketplaces', marketplaceRoutes);
 router.use('/api/orders', orderRoutes);
 router.use('/api/category-mappings', categoryMappingRoutes);
 router.use('/api/trendyol', trendyolRoutes);
+router.use('/api', mockDataRoutes);
+router.use('/api/mappings', mappingRoutes);
+router.use('/api/upload', uploadRoutes);
 
 module.exports = router; 

@@ -1,4 +1,4 @@
-const { Brand } = require('../models');
+const Brand = require('../models/Brand');
 const logger = require('../utils/logger');
 
 /**

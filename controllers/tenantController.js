@@ -1,4 +1,6 @@
-const { Tenant, Customer, Package } = require('../models');
+const Tenant = require('../models/Tenant');
+const Customer = require('../models/Customer');
+const Package = require('../models/Package');
 const logger = require('../utils/logger');
 
 class TenantController {

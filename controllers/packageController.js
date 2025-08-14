@@ -1,4 +1,5 @@
-const { Package, Tenant } = require('../models');
+const Package = require('../models/Package');
+const Tenant = require('../models/Tenant');
 const logger = require('../utils/logger');
 
 class PackageController {

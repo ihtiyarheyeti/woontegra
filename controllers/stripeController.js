@@ -1,4 +1,4 @@
-const { Tenant } = require('../models');
+const Tenant = require('../models/Tenant');
 const { 
   stripe,
   createStripeCustomer, 

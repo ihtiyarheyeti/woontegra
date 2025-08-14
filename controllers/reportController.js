@@ -1,4 +1,6 @@
-const { Order, SyncLog, Product } = require('../models');
+const Order = require('../models/Order');
+const SyncLog = require('../models/SyncLog');
+const Product = require('../models/Product');
 const logger = require('../utils/logger');
 
 // Get summary statistics

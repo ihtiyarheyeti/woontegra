@@ -1,4 +1,5 @@
 const WooCommerceAPIClient = require('../services/WooCommerceAPIClient');
+const mockDataController = require('./mockDataController');
 const logger = require('../utils/logger');
 
 /**
@@ -12,8 +13,7 @@ const getProducts = async (req, res) => {
   logger.info(`🔄 WooCommerce ürünleri getiriliyor - Customer ID: ${customer_id}`);
   
   try {
-    // Kullanıcının WooCommerce bilgilerini al
-    const { Customer } = require('../models');
+    const Customer = require('../models/Customer');
     const customer = await Customer.findByPk(customer_id);
     
     if (!customer || !customer.woo_store_url || !customer.woo_consumer_key || !customer.woo_consumer_secret) {
@@ -24,35 +24,14 @@ const getProducts = async (req, res) => {
       });
     }
 
-    logger.info(`🔗 WooCommerce API Client oluşturuluyor - Store URL: ${customer.woo_store_url}`);
-
-    // WooCommerce API Client oluştur
     const apiClient = new WooCommerceAPIClient(
       customer.woo_consumer_key,
       customer.woo_consumer_secret,
       customer.woo_store_url
     );
-
-    // Tüm ürünleri çekmek için pagination kullan
-    logger.info(`📦 WooCommerce'dan tüm ürünler çekiliyor...`);
     
-    let allProducts = [];
-    let page = 1;
-    let hasMoreProducts = true;
-    
-    while (hasMoreProducts) {
-      const products = await apiClient.getProducts(page, 100, 'publish');
-      
-      if (products && products.length > 0) {
-        allProducts = allProducts.concat(products);
-        logger.info(`📄 Sayfa ${page}: ${products.length} ürün çekildi`);
-        page++;
-      } else {
-        hasMoreProducts = false;
-      }
-    }
-    
-    const products = allProducts;
+    logger.info(`📦 WooCommerce'dan ürünler çekiliyor...`);
+    const products = await apiClient.getProducts();
 
     const duration = Date.now() - startTime;
     logger.info(`✅ WooCommerce ürünleri başarıyla getirildi - Customer ID: ${customer_id}, Ürün Sayısı: ${products.length}, Süre: ${duration}ms`);
@@ -61,7 +40,6 @@ const getProducts = async (req, res) => {
       success: true,
       message: 'WooCommerce ürünleri başarıyla getirildi',
       data: products,
-      total: products.length,
       duration: duration
     });
 
@@ -90,7 +68,7 @@ const getProductById = async (req, res) => {
   logger.info(`🔄 WooCommerce ürün detayı getiriliyor - Product ID: ${id}, Customer ID: ${customer_id}`);
   
   try {
-    const { Customer } = require('../models');
+    const Customer = require('../models/Customer');
     const customer = await Customer.findByPk(customer_id);
     
     if (!customer || !customer.woo_store_url || !customer.woo_consumer_key || !customer.woo_consumer_secret) {
@@ -145,7 +123,8 @@ const syncProducts = async (req, res) => {
   logger.info(`🔄 WooCommerce senkronizasyonu başlatılıyor - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}`);
   
   try {
-    const { Customer, Product } = require('../models');
+    const Customer = require('../models/Customer');
+    const Product = require('../models/Product');
     const customer = await Customer.findByPk(customer_id);
     
     if (!customer || !customer.woo_store_url || !customer.woo_consumer_key || !customer.woo_consumer_secret) {
@@ -241,6 +220,15 @@ const syncProducts = async (req, res) => {
 };
 
 /**
+ * Get WooCommerce product attributes
+ * GET /api/woocommerce/product-attributes
+ */
+const getProductAttributes = async (req, res) => {
+  // Mock data kullan
+  return await mockDataController.getProductAttributes(req, res);
+};
+
+/**
  * Test WooCommerce connection
  * GET /api/woocommerce/test-connection
  */
@@ -251,7 +239,7 @@ const testConnection = async (req, res) => {
   logger.info(`🔄 WooCommerce bağlantı testi başlatılıyor - Customer ID: ${customer_id}`);
   
   try {
-    const { Customer } = require('../models');
+    const Customer = require('../models/Customer');
     const customer = await Customer.findByPk(customer_id);
     
     if (!customer || !customer.woo_store_url || !customer.woo_consumer_key || !customer.woo_consumer_secret) {
@@ -303,5 +291,6 @@ module.exports = {
   getProducts,
   getProductById,
   syncProducts,
-  testConnection
+  testConnection,
+  getProductAttributes
 }; 

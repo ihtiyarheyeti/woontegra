@@ -26,6 +26,16 @@ interface WooProduct {
   status: string;
   date_created: string;
   date_modified: string;
+  // WooCommerce'dan gelen gerçek alanlar
+  tax_status: string;
+  tax_class: string;
+  type: string;
+  brand?: string; // Eğer WooCommerce'da brand alanı varsa
+  attributes?: Array<{
+    id: number;
+    name: string;
+    options: string[];
+  }>;
 }
 
 interface ProductContextType {
@@ -78,7 +88,13 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         name: cat.name
       })),
       sku: product.sku,
-      status: product.status
+      status: product.status,
+      // Yeni alanları ekle
+      tax_status: product.tax_status,
+      tax_class: product.tax_class,
+      type: product.type,
+      brand: product.brand,
+      attributes: product.attributes
       // description ve date alanları kaldırıldı (çok büyük)
     }));
     
@@ -98,6 +114,12 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         id: 0,
         name: img.alt || ''
       })),
+      // Eksik alanları ekle
+      tax_status: product.tax_status || 'taxable',
+      tax_class: product.tax_class || 'standard',
+      type: product.type || 'simple',
+      brand: product.brand || '',
+      attributes: product.attributes || [],
       categories: product.categories.map((cat: any) => ({
         ...cat,
         slug: cat.name.toLowerCase().replace(/\s+/g, '-')

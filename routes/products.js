@@ -12,6 +12,9 @@ router.get('/', requireViewer, productController.getAllProducts);
 // Get WooCommerce products (Viewer+)
 router.get('/woocommerce', requireViewer, productController.getWooCommerceProducts);
 
+// Get WooCommerce product attributes (Viewer+)
+router.get('/woocommerce/attributes', requireViewer, productController.getProductAttributes);
+
 // Get product statistics (Viewer+)
 router.get('/stats', requireViewer, productController.getProductStats);
 

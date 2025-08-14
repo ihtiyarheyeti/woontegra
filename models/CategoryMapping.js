@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const sequelize = require('./index');
 
 const CategoryMapping = sequelize.define('CategoryMapping', {
   id: {

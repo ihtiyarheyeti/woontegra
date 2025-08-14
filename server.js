@@ -9,6 +9,7 @@ const logger = require('./utils/logger');
 const { testConnection, initializeTables } = require('./config/database');
 const routes = require('./routes');
 const { initializeCronJobs } = require('./utils/cronJobs');
+const { authenticateToken } = require('./middleware/auth');
 
 const app = express();
 const PORT = 3001; // Kalıcı olarak 3001 portu - değiştirmeyin!
@@ -19,7 +20,9 @@ app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://yourdomain.com'] 
     : ['http://localhost:3000', 'http://localhost:5173'],
-  credentials: true
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','Accept'],
 }));
 
 // Rate limiting
@@ -49,6 +52,33 @@ app.use((req, res, next) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Auth middleware'i tüm API'ye uygula (PUBLIC_ROUTES bayrağı ile seçili uçlar bypass)
+app.use('/api', (req, res, next) => {
+  // PUBLIC_ROUTES kontrolü
+  const publicList = String(process.env.PUBLIC_ROUTES || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  
+  const fullPath = req.originalUrl;
+  const pathOnly = req.path;
+  
+  // Hem tam path hem de sadece path'i kontrol et
+  const isPublic = publicList.some(p => 
+    fullPath.startsWith(p) || 
+    pathOnly.startsWith(p.replace('/api', '')) ||
+    fullPath.includes(p.replace('/api', ''))
+  );
+  
+  if (isPublic) {
+    logger.debug(`Public route bypass: ${fullPath} (matched: ${pathOnly})`);
+    return next();
+  }
+  
+  // Private route - authentication required
+  return authenticateToken(req, res, next);
 });
 
 // API routes
@@ -86,8 +116,9 @@ async function startServer() {
     initializeCronJobs();
     
     app.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-      logger.info(`Health check: http://localhost:${PORT}/health`);
+                      logger.info(`Server running on port ${PORT}`);
+                logger.info(`Health check: http://localhost:${PORT}/health`);
+                logger.info(`AUTH_REQUIRED=${process.env.AUTH_REQUIRED} | PUBLIC_ROUTES=${process.env.PUBLIC_ROUTES}`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error.message);

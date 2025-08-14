@@ -1,4 +1,5 @@
-const { Customer, Tenant } = require('../models');
+const Customer = require('../models/Customer');
+const Tenant = require('../models/Tenant');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');

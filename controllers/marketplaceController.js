@@ -1,4 +1,5 @@
-const { Customer } = require('../models');
+const Customer = require('../models/Customer');
+const MarketplaceConnection = require('../models/MarketplaceConnection');
 const marketplaceService = require('../services/marketplaceService');
 const logger = require('../utils/logger');
 
@@ -256,92 +257,76 @@ async function testPazaramaConnection(req, res) {
  */
 async function saveMarketplaceConnection(req, res) {
   const startTime = Date.now();
-  const { marketplace, connectionData } = req.body;
   const customer_id = req.user.id;
-
-  logger.info(`🔄 Pazaryeri bağlantısı kaydediliyor - Customer ID: ${customer_id}, Marketplace: ${marketplace}`);
-
+  const tenant_id = req.user.tenant_id;
+  
+  logger.info(`🔄 Pazaryeri bağlantısı kaydediliyor - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}`);
+  
   try {
-    if (!marketplace || !connectionData) {
+    const { marketplace_name, store_name, api_key, api_secret, additional_config } = req.body;
+    
+    if (!marketplace_name || !store_name || !api_key || !api_secret) {
       return res.status(400).json({
         success: false,
-        message: 'Marketplace ve bağlantı bilgileri gereklidir'
+        message: 'Gerekli alanlar eksik'
       });
     }
-
-    // Find customer and update marketplace connection data
-    const customer = await Customer.findByPk(customer_id);
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: 'Kullanıcı bulunamadı'
-      });
-    }
-
-    // Update customer with marketplace connection data
-    const updateData = {};
     
-    switch (marketplace) {
-      case 'woocommerce':
-        updateData.woo_store_url = connectionData.storeUrl;
-        updateData.woo_consumer_key = connectionData.consumerKey;
-        updateData.woo_consumer_secret = connectionData.consumerSecret;
-        break;
-      case 'trendyol':
-        updateData.trendyol_seller_id = connectionData.seller_id;
-        updateData.trendyol_integration_code = connectionData.integration_code;
-        updateData.trendyol_api_key = connectionData.api_key;
-        updateData.trendyol_api_secret = connectionData.api_secret;
-        updateData.trendyol_token = connectionData.token || null;
-        break;
-      case 'hepsiburada':
-        updateData.hepsiburada_merchant_id = connectionData.merchant_id;
-        updateData.hepsiburada_api_key = connectionData.api_key;
-        updateData.hepsiburada_api_secret = connectionData.api_secret;
-        break;
-      case 'n11':
-        updateData.n11_app_key = connectionData.app_key;
-        updateData.n11_app_secret = connectionData.app_secret;
-        break;
-      case 'ciceksepeti':
-        updateData.ciceksepeti_dealer_code = connectionData.dealer_code;
-        updateData.ciceksepeti_api_key = connectionData.api_key;
-        updateData.ciceksepeti_secret_key = connectionData.secret_key;
-        break;
-      case 'pazarama':
-        updateData.pazarama_merchant_id = connectionData.merchant_id;
-        updateData.pazarama_api_key = connectionData.api_key;
-        updateData.pazarama_secret_key = connectionData.secret_key;
-        break;
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Geçersiz marketplace'
-        });
+    const MarketplaceConnection = require('../models/MarketplaceConnection');
+    
+    // Mevcut bağlantıyı kontrol et
+    const existingConnection = await MarketplaceConnection.findOne({
+      where: { 
+        tenant_id, 
+        marketplace_name 
+      }
+    });
+    
+    let connection;
+    if (existingConnection) {
+      // Mevcut bağlantıyı güncelle
+      connection = await existingConnection.update({
+        store_name,
+        api_key,
+        api_secret,
+        additional_config,
+        updated_at: new Date()
+      });
+      logger.info(`🔄 Pazaryeri bağlantısı güncellendi - ID: ${connection.id}`);
+    } else {
+      // Yeni bağlantı oluştur
+      connection = await MarketplaceConnection.create({
+        tenant_id,
+        customer_id,
+        marketplace_name,
+        store_name,
+        api_key,
+        api_secret,
+        additional_config,
+        status: 'active'
+      });
+      logger.info(`🆕 Yeni pazaryeri bağlantısı oluşturuldu - ID: ${connection.id}`);
     }
-
-    await customer.update(updateData);
 
     const duration = Date.now() - startTime;
-    logger.info(`✅ Pazaryeri bağlantısı kaydedildi - Customer ID: ${customer_id}, Marketplace: ${marketplace}, Süre: ${duration}ms`);
+    logger.info(`✅ Pazaryeri bağlantısı başarıyla kaydedildi - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}, Marketplace: ${marketplace_name}, Süre: ${duration}ms`);
 
     res.json({
       success: true,
-      message: `${marketplace} bağlantısı başarıyla kaydedildi`,
-      data: {
-        marketplace,
-        savedAt: new Date().toISOString()
-      }
+      message: `${marketplace_name} bağlantısı başarıyla kaydedildi`,
+      data: connection,
+      duration: duration
     });
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error(`❌ Pazaryeri bağlantısı kaydetme hatası - Customer ID: ${customer_id}, Marketplace: ${marketplace}, Hata: ${error.message}, Süre: ${duration}ms`);
+    logger.error(`❌ Pazaryeri bağlantısı kaydedilirken hata - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}, Hata: ${error.message}, Süre: ${duration}ms`);
     
     res.status(500).json({
       success: false,
-      message: 'Bağlantı kaydedilirken hata oluştu',
-      error: error.message
+      message: 'Pazaryeri bağlantısı kaydedilirken bir hata oluştu',
+      error: error.message,
+      duration: duration
     });
   }
 }
@@ -353,74 +338,37 @@ async function saveMarketplaceConnection(req, res) {
 async function getMarketplaceConnections(req, res) {
   const startTime = Date.now();
   const customer_id = req.user.id;
-
-  logger.info(`🔄 Pazaryeri bağlantıları getiriliyor - Customer ID: ${customer_id}`);
-
+  const tenant_id = req.user.tenant_id;
+  
+  logger.info(`🔄 Pazaryeri bağlantıları getiriliyor - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}`);
+  
   try {
-    const customer = await Customer.findByPk(customer_id);
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: 'Kullanıcı bulunamadı'
-      });
-    }
-
-    const connections = {
-      woocommerce: {
-        storeUrl: customer.woo_store_url || '',
-        consumerKey: customer.woo_consumer_key || '',
-        consumerSecret: customer.woo_consumer_secret || '',
-        isConnected: !!(customer.woo_store_url && customer.woo_consumer_key && customer.woo_consumer_secret)
-      },
-      trendyol: {
-        seller_id: customer.trendyol_seller_id || '',
-        integration_code: customer.trendyol_integration_code || '',
-        api_key: customer.trendyol_api_key || '',
-        api_secret: customer.trendyol_api_secret || '',
-        token: customer.trendyol_token || '',
-        isConnected: !!(customer.trendyol_seller_id && customer.trendyol_integration_code && customer.trendyol_api_key && customer.trendyol_api_secret)
-      },
-      hepsiburada: {
-        merchant_id: customer.hepsiburada_merchant_id || '',
-        api_key: customer.hepsiburada_api_key || '',
-        api_secret: customer.hepsiburada_api_secret || '',
-        isConnected: !!(customer.hepsiburada_merchant_id && customer.hepsiburada_api_key && customer.hepsiburada_api_secret)
-      },
-      n11: {
-        app_key: customer.n11_app_key || '',
-        app_secret: customer.n11_app_secret || '',
-        isConnected: !!(customer.n11_app_key && customer.n11_app_secret)
-      },
-      ciceksepeti: {
-        dealer_code: customer.ciceksepeti_dealer_code || '',
-        api_key: customer.ciceksepeti_api_key || '',
-        secret_key: customer.ciceksepeti_secret_key || '',
-        isConnected: !!(customer.ciceksepeti_dealer_code && customer.ciceksepeti_api_key && customer.ciceksepeti_secret_key)
-      },
-      pazarama: {
-        merchant_id: customer.pazarama_merchant_id || '',
-        api_key: customer.pazarama_api_key || '',
-        secret_key: customer.pazarama_secret_key || '',
-        isConnected: !!(customer.pazarama_merchant_id && customer.pazarama_api_key && customer.pazarama_secret_key)
-      }
-    };
+    const MarketplaceConnection = require('../models/MarketplaceConnection');
+    
+    const connections = await MarketplaceConnection.findAll({
+      where: { tenant_id },
+      order: [['created_at', 'DESC']]
+    });
 
     const duration = Date.now() - startTime;
-    logger.info(`✅ Pazaryeri bağlantıları getirildi - Customer ID: ${customer_id}, Süre: ${duration}ms`);
+    logger.info(`✅ Pazaryeri bağlantıları başarıyla getirildi - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}, Bağlantı Sayısı: ${connections.length}, Süre: ${duration}ms`);
 
     res.json({
       success: true,
-      data: connections
+      message: 'Pazaryeri bağlantıları başarıyla getirildi',
+      data: connections,
+      duration: duration
     });
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error(`❌ Pazaryeri bağlantıları getirme hatası - Customer ID: ${customer_id}, Hata: ${error.message}, Süre: ${duration}ms`);
+    logger.error(`❌ Pazaryeri bağlantıları alınırken hata - Customer ID: ${customer_id}, Tenant ID: ${tenant_id}, Hata: ${error.message}, Süre: ${duration}ms`);
     
     res.status(500).json({
       success: false,
-      message: 'Bağlantılar getirilirken hata oluştu',
-      error: error.message
+      message: 'Pazaryeri bağlantıları alınırken bir hata oluştu',
+      error: error.message,
+      duration: duration
     });
   }
 }

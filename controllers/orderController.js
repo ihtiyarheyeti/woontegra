@@ -1,4 +1,5 @@
-const { Order, Customer } = require('../models');
+const Order = require('../models/Order');
+const Customer = require('../models/Customer');
 const logger = require('../utils/logger');
 
 /**

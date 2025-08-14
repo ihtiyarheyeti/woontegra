@@ -93,7 +93,7 @@ const AddNewProduct: React.FC = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await api.get('/api/categories');
+              const response = await api.get('/categories');
       setCategories(response.data.data || []);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -102,7 +102,7 @@ const AddNewProduct: React.FC = () => {
 
   const fetchBrands = async () => {
     try {
-      const response = await api.get('/api/brands');
+              const response = await api.get('/brands');
       setBrands(response.data.data || []);
     } catch (error) {
       console.error('Error fetching brands:', error);

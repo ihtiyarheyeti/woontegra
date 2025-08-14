@@ -1,4 +1,4 @@
-const { MarketplaceConnection } = require('../models');
+const MarketplaceConnection = require('../models/MarketplaceConnection');
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 

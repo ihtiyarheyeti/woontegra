@@ -1,4 +1,5 @@
-const { Customer, CategoryMapping } = require('../models');
+const Customer = require('../models/Customer');
+const CategoryMapping = require('../models/CategoryMapping');
 const { Op } = require('sequelize');
 const crypto = require('crypto');
 const logger = require('../utils/logger');

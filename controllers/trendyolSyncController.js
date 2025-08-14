@@ -1,4 +1,6 @@
-const { Product, MarketplaceConnection, SyncLog } = require('../models');
+const Product = require('../models/Product');
+const MarketplaceConnection = require('../models/MarketplaceConnection');
+const SyncLog = require('../models/SyncLog');
 const logger = require('../utils/logger');
 const axios = require('axios');
 

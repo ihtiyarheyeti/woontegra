@@ -184,6 +184,19 @@ class TrendyolAPIClient {
 
   // Kategorileri hiyerarşik yapıya dönüştür
   formatCategories(categories) {
+    // Eğer API'den zaten hiyerarşik yapı geliyorsa, direkt kullan
+    if (categories.length > 0 && categories[0].subCategories !== undefined) {
+      logger.info('API\'den hiyerarşik yapı geldi, direkt kullanılıyor');
+      return categories.map(cat => ({
+        id: cat.id.toString(),
+        name: cat.name,
+        parentId: cat.parentId,
+        subCategories: cat.subCategories || []
+      }));
+    }
+
+    // Eski yöntem - parentId ile hiyerarşi kur
+    logger.info('API\'den düz liste geldi, hiyerarşi kuruluyor');
     const categoryMap = new Map();
     const rootCategories = [];
 
@@ -192,7 +205,7 @@ class TrendyolAPIClient {
       categoryMap.set(cat.id, {
         id: cat.id.toString(),
         name: cat.name,
-        children: []
+        subCategories: []
       });
     });
 
@@ -203,7 +216,7 @@ class TrendyolAPIClient {
       if (cat.parentId && categoryMap.has(cat.parentId)) {
         // Alt kategori
         const parent = categoryMap.get(cat.parentId);
-        parent.children.push(category);
+        parent.subCategories.push(category);
       } else {
         // Kök kategori
         rootCategories.push(category);
@@ -332,11 +345,11 @@ class TrendyolAPIClient {
       {
         id: "1",
         name: "Elektronik",
-        children: [
+        subCategories: [
           {
             id: "1-1",
             name: "Telefon",
-            children: [
+            subCategories: [
               { id: "1-1-1", name: "Akıllı Telefon" },
               { id: "1-1-2", name: "Telefon Aksesuarları" },
               { id: "1-1-3", name: "Telefon Kılıfları" },
@@ -348,7 +361,7 @@ class TrendyolAPIClient {
           {
             id: "1-2",
             name: "Bilgisayar",
-            children: [
+            subCategories: [
               { id: "1-2-1", name: "Dizüstü Bilgisayar" },
               { id: "1-2-2", name: "Masaüstü Bilgisayar" },
               { id: "1-2-3", name: "Bilgisayar Bileşenleri" },
@@ -369,11 +382,11 @@ class TrendyolAPIClient {
       {
         id: "2",
         name: "Moda",
-        children: [
+        subCategories: [
           {
             id: "2-1",
             name: "Kadın Giyim",
-            children: [
+            subCategories: [
               { id: "2-1-1", name: "Elbise" },
               { id: "2-1-2", name: "Üst Giyim" },
               { id: "2-1-3", name: "Alt Giyim" },
@@ -385,7 +398,7 @@ class TrendyolAPIClient {
           {
             id: "2-2",
             name: "Erkek Giyim",
-            children: [
+            subCategories: [
               { id: "2-2-1", name: "Üst Giyim" },
               { id: "2-2-2", name: "Alt Giyim" },
               { id: "2-2-3", name: "Dış Giyim" },
@@ -403,11 +416,11 @@ class TrendyolAPIClient {
       {
         id: "3",
         name: "Ev & Yaşam",
-        children: [
+        subCategories: [
           {
             id: "3-1",
             name: "Mobilya",
-            children: [
+            subCategories: [
               { id: "3-1-1", name: "Oturma Odası" },
               { id: "3-1-2", name: "Yatak Odası" },
               { id: "3-1-3", name: "Mutfak" },
@@ -418,7 +431,7 @@ class TrendyolAPIClient {
           {
             id: "3-2",
             name: "Ev Tekstili",
-            children: [
+            subCategories: [
               { id: "3-2-1", name: "Yatak Takımları" },
               { id: "3-2-2", name: "Havlu" },
               { id: "3-2-3", name: "Perde" },

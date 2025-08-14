@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auth Test</title>
+</head>
+<body>
+    <h1>Authentication Test</h1>
+    <div id="token-info"></div>
+    <div id="api-test"></div>
+    
+    <script>
+        // Token kontrolü
+        const token = localStorage.getItem('token');
+        const user = localStorage.getItem('user');
+        
+        document.getElementById('token-info').innerHTML = `
+            <h3>Token Info:</h3>
+            <p>Token exists: ${token ? 'YES' : 'NO'}</p>
+            <p>User exists: ${user ? 'YES' : 'NO'}</p>
+            <p>Token: ${token ? token.substring(0, 50) + '...' : 'None'}</p>
+        `;
+        
+        // API test
+        if (token) {
+            fetch('http://localhost:3001/api/category-mappings/trendyol-categories', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('api-test').innerHTML = `
+                    <h3>API Test Result:</h3>
+                    <p>Success: ${data.success}</p>
+                    <p>Categories count: ${data.data ? data.data.length : 0}</p>
+                `;
+            })
+            .catch(error => {
+                document.getElementById('api-test').innerHTML = `
+                    <h3>API Test Error:</h3>
+                    <p>${error.message}</p>
+                `;
+            });
+        }
+    </script>
+</body>
+</html> 

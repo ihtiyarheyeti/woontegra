@@ -12,13 +12,13 @@ interface WooCommerceCategory {
 interface MarketplaceCategory {
   id: string;
   name: string;
-  children?: MarketplaceCategory[];
+  subCategories?: MarketplaceCategory[];
 }
 
 interface TrendyolCategory {
   id: string;
   name: string;
-  children?: TrendyolCategory[];
+  subCategories?: TrendyolCategory[];
 }
 
 interface Marketplace {
@@ -132,8 +132,8 @@ const CategoryMapping: React.FC = () => {
       if (category.id === id) {
         return category;
       }
-      if (category.children) {
-        const found = findMarketplaceCategoryById(category.children, id);
+      if (category.subCategories) {
+        const found = findMarketplaceCategoryById(category.subCategories, id);
         if (found) return found;
       }
     }
@@ -192,8 +192,8 @@ const CategoryMapping: React.FC = () => {
       if (category.id === id) {
         return category;
       }
-      if (category.children) {
-        const found = findTrendyolCategoryById(category.children, id);
+      if (category.subCategories) {
+        const found = findTrendyolCategoryById(category.subCategories, id);
         if (found) return found;
       }
     }
@@ -210,8 +210,8 @@ const CategoryMapping: React.FC = () => {
           ...cat,
           name: '─'.repeat(level) + ' ' + cat.name
         });
-        if (cat.children) {
-          flatten(cat.children, level + 1);
+        if (cat.subCategories) {
+          flatten(cat.subCategories, level + 1);
         }
       });
     };

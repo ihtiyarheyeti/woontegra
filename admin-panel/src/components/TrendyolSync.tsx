@@ -58,7 +58,7 @@ const TrendyolSync: React.FC = () => {
   // Senkronizasyon durumunu getir
   const fetchSyncStatus = async () => {
     try {
-      const response = await api.get('/api/trendyol-sync/status');
+              const response = await api.get('/trendyol-sync/status');
       setSyncStatus(response.data.data);
     } catch (error) {
       console.error('Error fetching sync status:', error);
