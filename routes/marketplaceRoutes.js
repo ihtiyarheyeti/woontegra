@@ -28,11 +28,15 @@ router.post("/marketplaces/save-connection", async (req, res) => {
   try {
     const body = req.body || {};
     const marketplace = (body.marketplace || "").toString().toLowerCase();
+    
+    // Frontend connectionData wrapper'ını destekle
+    const connectionData = body.connectionData || {};
+    const data = { ...body, ...connectionData };
 
     // Alias desteği
-    const supplier_id = pick(body.supplier_id, body.supplierId);
-    const app_key     = pick(body.app_key, body.appKey, body.apiKey);
-    const app_secret  = pick(body.app_secret, body.appSecret, body.apiSecret);
+    const supplier_id = pick(data.supplier_id, data.supplierId);
+    const app_key     = pick(data.app_key, data.appKey, data.apiKey);
+    const app_secret  = pick(data.app_secret, data.appSecret, data.apiSecret);
 
     if (!marketplace) {
       return res.status(400).json({ success: false, message: "marketplace zorunludur" });

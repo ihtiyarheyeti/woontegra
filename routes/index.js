@@ -10,7 +10,7 @@ const tenantRoutes = require('./tenants');
 const customerRoutes = require('./customers');
 const packageRoutes = require('./packages');
 const woocommerceRoutes = require('./woocommerce');
-const marketplaceRoutes = require('./marketplaces');
+const existingMarketplaceRoutes = require('./marketplaces');
 const orderRoutes = require('./orders');
 const categoryMappingRoutes = require('./categoryMappings');
 const trendyolRoutes = require('./trendyolSync');
@@ -18,7 +18,7 @@ const mockDataRoutes = require('./mockDataRoutes');
 const mappingRoutes = require('./mappings');
 const uploadRoutes = require('./upload');
 const newCategoryRoutes = require('./categoryRoutes');
-const marketplaceRoutes = require('./marketplaceRoutes');
+const newMarketplaceRoutes = require('./marketplaceRoutes');
 
 // Mount routes
 router.use('/api/auth', authRoutes);
@@ -29,7 +29,7 @@ router.use('/api/tenants', tenantRoutes);
 router.use('/api/customers', customerRoutes);
 router.use('/api/packages', packageRoutes);
 router.use('/api/woocommerce', woocommerceRoutes);
-router.use('/api/marketplaces', marketplaceRoutes);
+router.use('/api/marketplaces', existingMarketplaceRoutes);
 router.use('/api/orders', orderRoutes);
 router.use('/api/category-mappings', categoryMappingRoutes);
 router.use('/api/trendyol', trendyolRoutes);
@@ -37,6 +37,6 @@ router.use('/api', mockDataRoutes);
 router.use('/api/mappings', mappingRoutes);
 router.use('/api/upload', uploadRoutes);
 router.use('/api', newCategoryRoutes);
-router.use('/api', marketplaceRoutes);
+router.use('/api', newMarketplaceRoutes);
 
 module.exports = router; 
