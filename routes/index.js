@@ -17,6 +17,7 @@ const trendyolRoutes = require('./trendyolSync');
 const mockDataRoutes = require('./mockDataRoutes');
 const mappingRoutes = require('./mappings');
 const uploadRoutes = require('./upload');
+const categoryRoutes = require('./categoryRoutes');
 
 // Mount routes
 router.use('/api/auth', authRoutes);
@@ -34,5 +35,6 @@ router.use('/api/trendyol', trendyolRoutes);
 router.use('/api', mockDataRoutes);
 router.use('/api/mappings', mappingRoutes);
 router.use('/api/upload', uploadRoutes);
+router.use('/api', categoryRoutes);
 
 module.exports = router; 
